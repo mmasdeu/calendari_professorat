@@ -8,8 +8,8 @@ $output_file = null;
 $output_scp = null;
 $return_var = null;
 
-function make_python_code($nom) {
-    return "-m fire calendari_professor.py fes_web_calendari --name=\"" . $nom . "\"";
+function make_python_code($nom, $include_holidays = false) {
+    return "-m fire calendari_professor.py fes_web_calendari --name=\"" . $nom . "\"" . ($include_holidays ? " --include_holidays=True" : " --include_holidays=False");
 };
 
 if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
@@ -29,25 +29,32 @@ if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
     }
 }
 
-if (isset($_GET['nom'])) {
-    $nom =  $_GET['nom'];
-    $python_code = make_python_code($nom);
-    // Stream output live to the browser instead of buffering it all
-    $output = run_python_code($python_code);
-    $resultat = $output['success'] ? $output['stdout'] : "Error: " . $output['stderr'];
+// Unified request handling for GET/POST 'nom' (excluding feed handling above)
+function handle_nom_request($raw_nom, $holidays_option) {
+  global $nom, $resultat;
 
+  $raw_nom = trim((string)$raw_nom);
+  if ($raw_nom === '') {
+    $resultat = "Invalid input provided.";
+    $nom = '';
+    return;
+  }
+
+  // Value for HTML output
+  $nom = htmlspecialchars($raw_nom, ENT_QUOTES, 'UTF-8');
+
+  // Value for the python command (basic sanitization)
+  $safe_nom = filter_var($raw_nom, FILTER_SANITIZE_STRING);
+  $python_code = make_python_code($safe_nom, include_holidays: $holidays_option === 'true');
+  $output = run_python_code($python_code);
+  $resultat = $output['success'] ? $output['stdout'] : "Error: " . $output['stderr'];
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  $action = $_POST['action'] ?? null;
-  
-  if ($action === 'genera') {
-    $nom = $_POST['nom'] ?? '';
-    $python_code = make_python_code($nom);
-    // Stream output live to the browser
-    $output = run_python_code($python_code);
-    $resultat = $output['success'] ? $output['stdout'] : "Error: " . $output['stderr'];
-  };
+// Prefer GET (non-feed) over POST; handle form POST otherwise
+if (isset($_GET['nom'])) {
+  handle_nom_request($_GET['nom'], $_GET['holidays'] ?? null);
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nom'])) {
+  handle_nom_request($_POST['nom'], $_POST['holidays'] ?? null);
 }
 
 // Helper function
@@ -156,9 +163,17 @@ function run_python_code($code) {
       <strong>Calendari generat per: <?= htmlspecialchars($nom) ?></strong>
     </div>
   <?php else: ?>
+      <?php
+        // Preserve holidays checkbox state across submissions; default to checked
+        $holidays_checked = isset($_REQUEST['holidays']) ? (($_REQUEST['holidays'] === 'true') ? 'checked' : '') : 'checked';
+      ?>
       <form method="POST" class="step-form" action="#resultat">
         <label for="nom">Introdueix el nom</label>
         <input type="text" name="nom" id="nom" placeholder="Carl Friedrich Gauss" required>
+        <label for="holidays" style="font-weight: normal;">
+          <input type="checkbox" id="holidays" name="holidays" value="true" <?php echo $holidays_checked; ?>>
+          Incloure festius i no lectius
+        </label>
         <button type="submit" name="action" value="genera">Genera</button>
       </form>
   <?php endif; ?>

@@ -2,21 +2,18 @@ from playwright.sync_api import sync_playwright, expect, Error
 from playwright._impl._errors import TimeoutError
 from icalendar import Calendar, Event, vDatetime, vDate
 from urllib.parse import quote
-import sys
-import re
-import base64
+import sys, os, re, base64, fire
 from webbrowser import open as webbrowser_open
 from time import sleep
 from contextlib import nullcontext
 from datetime import date, timedelta
-import fire
 
-USER = 'masdeu'
 URL_TPD = "https://web01.uab.es:31501/pds/transparenciaPD/InicioTransparencia?entradaPublica=true&idioma=ca&pais=ES#"
 URL_HORARIS = "https://web01.uab.es:31501/pds/consultaPublica/look%5Bconpub%5DInicioPubHora?entradaPublica=true&idiomaPais=ca.ES"  # <-- set the page URL where the original script runs
-BROWSER_PATH = "/home/" + USER + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"  # <-- set the path to your Chromium browser executable
-
-import sys
+HOME = os.getenv('HOME')
+if 'home' not in HOME:
+    HOME = '/home/masdeu'  # default fallback for use with things like /var/www
+BROWSER_PATH = HOME + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"  # <-- set the path to your Chromium browser executable
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -89,8 +86,8 @@ def genera_assignatures(page):
             var tables = document.querySelectorAll('table.tablaFicha.taulaFitxa.centros');
             var result = {};
             var codeRe = /\\d{4,6}/; // capture code digits
-            var fullCodeCellRe = /^\\s*(\\d{4,6})(?:\s*[-–:]\\s*(.*))?$/; // "101742 - Course Name"
-            var slashPattern = '([A-Za-zÀ-ÿ0-9.\-]{1,20})\\s*\\/\\s*(\\d{1,3})';
+            var fullCodeCellRe = /^\\s*(\\d{4,6})(?:\\s*[-–:]\\s*(.*))?$/; // "101742 - Course Name"
+            var slashPattern = '([A-Za-zÀ-ÿ0-9.\\-]{1,20})\\s*\\/\\s*(\\d{1,3})';
             var noslashPattern = '([A-Za-zÀ-ÿ]{2,20})(\\d{1,3})';
 
             tables.forEach(function(tbl){
@@ -130,7 +127,7 @@ def genera_assignatures(page):
                 var raw = (tds[codiIdx].textContent||'').trim();
                 var mFull = raw.match(fullCodeCellRe);
                 if(mFull){ rawCode = mFull[1]; rawName = (mFull[2]||'').trim(); codeCellIdx = codiIdx; }
-                else { var m = raw.match(codeRe); if(m){ rawCode = m[0]; codeCellIdx = codiIdx; var rest = raw.replace(m[0],'').replace(/^\s*[-–:]?\s*/,'').trim(); if(rest) rawName = rest; } }
+                else { var m = raw.match(codeRe); if(m){ rawCode = m[0]; codeCellIdx = codiIdx; var rest = raw.replace(m[0],'').replace(/^\\s*[-–:]?\\s*/,'').trim(); if(rest) rawName = rest; } }
                 }
 
                 if(!rawCode){
@@ -139,7 +136,7 @@ def genera_assignatures(page):
                     var mFull2 = txt.match(fullCodeCellRe);
                     if(mFull2){ rawCode = mFull2[1]; rawName = (mFull2[2]||'').trim(); codeCellIdx = i; break; }
                     var md = txt.match(codeRe);
-                    if(md){ rawCode = md[0]; codeCellIdx = i; var after = txt.replace(md[0],'').replace(/^\s*[-–:]?\s*/,'').trim(); if(after) rawName = after; else if(i+1<tds.length) rawName = (tds[i+1].textContent||'').trim(); break; }
+                    if(md){ rawCode = md[0]; codeCellIdx = i; var after = txt.replace(md[0],'').replace(/^\\s*[-–:]?\\s*/,'').trim(); if(after) rawName = after; else if(i+1<tds.length) rawName = (tds[i+1].textContent||'').trim(); break; }
                 }
                 }
 
@@ -182,7 +179,7 @@ def genera_assignatures(page):
                 var group = tds[idx_shift].textContent;
                 
                 // Extract digits from centre name
-                var codicentre = centre.match(/\d+/)[0];
+                var codicentre = centre.match(/\\d+/)[0];
                 result[centre].push([code, codicentre, name || '', group || '(no group)', period]);
             });
             });
@@ -304,6 +301,7 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
 
                 var calendar = new FullCalendar.Calendar(calendarEl, {
                     initialView: "listMonth",
+                    contentHeight:"auto",
                     events: $eventsJSON,
                     locale: "ca",
                     });
@@ -353,8 +351,8 @@ def get_assignatures(name):
             page.wait_for_load_state('networkidle')
         except TimeoutError:
             eprint(f"No s'ha trobat cap professor/a amb el nom '{name}'.")
-            return None, []
             browser.close()
+            return None, []     
         genera_assignatures(page)
         while page.evaluate("document.llista_assignatures") is None:
             page.wait_for_timeout(100)
@@ -362,7 +360,7 @@ def get_assignatures(name):
         browser.close()
     return professor, llista_assignatures
 
-def genera_calendari(llista_assignatures):
+def genera_calendari(llista_assignatures, include_holidays=True):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, executable_path=BROWSER_PATH)
         # navigate to page
@@ -392,6 +390,9 @@ def genera_calendari(llista_assignatures):
 
         # Convert document.blobData to something we can use
         calendar = Calendar.from_ical(page.evaluate("document.blobData"))
+        browser.close()
+
+        # Process events and keep only those corresponding to our subjects
         newcal = Calendar()
         events_fullcalendar = []
         for event in calendar.events:
@@ -416,19 +417,21 @@ def genera_calendari(llista_assignatures):
                     event.add('dtend', vDatetime(end.dt))  # make end date exclusive
                     newcal.add_component(event)
                     events_fullcalendar.append((title, str(start.dt), str(end.dt), a.color(), False))
-            else: # Dies no lectius o similar
-                # check whether start date is during weekend
-                # TODO
+            elif include_holidays and start.dt.weekday() <= 4:  # Dies no lectius o similar
                 data = data.replace(' - ','')
                 event = Event()
                 event['SUMMARY'] = data
-                # Set event to be all-day
-                event.add('dtstart', vDate(start.dt))
-                # End one day later
-                event.add('dtend', vDate(end.dt+timedelta(days=1)))
+                # If duration is longer than 9h, make it an all-day event
+                if (end.dt - start.dt) > timedelta(hours=9):
+                    # Set event to be all-day
+                    event.add('dtstart', vDate(start.dt))
+                    # End one day later
+                    event.add('dtend', vDate(end.dt+timedelta(days=1)))
+                else:
+                    event.add('dtstart', vDatetime(start.dt))
+                    event.add('dtend', vDatetime(end.dt))
                 newcal.add_component(event) # Add non-lecture days to the ICS
                 events_fullcalendar.append((data, str(start.dt), str(end.dt), '#808080', True))
-        browser.close()
     return newcal, events_fullcalendar
 
 def imprimeix_llista_assignatures(professor, llista_assignatures, html=True, outfile=None):
@@ -454,51 +457,81 @@ def imprimeix_llista_assignatures(professor, llista_assignatures, html=True, out
             f.write(linia.replace('\t', tab) + end)
         f.write(sep)
 
-def fes_feed(name):
-    professor, llista_assignatures = get_assignatures(name)
-    calendar, _ = genera_calendari(llista_assignatures)
+def fes_feed(name, include_holidays=True):
+    _, llista_assignatures = get_assignatures(name)
+    calendar, _ = genera_calendari(llista_assignatures, include_holidays=include_holidays)
     # Generaate ICS feed directly to stdout
     sys.stdout.buffer.write(calendar.to_ical())
     return
 
-def fes_web_calendari(name):
+def fes_web_assignatura(assignatura, include_holidays=True):
+    llista_assignatures = [assignatura]
+    calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays)
+    imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
+    return
+
+def fes_web_calendari(name, include_holidays=True):
     professor, llista_assignatures = get_assignatures(name)
 
     if professor is None:
         print('No s\'ha trobat cap professor/a amb el nom especificat.\n')
         return
     # Write feed generating url in a box, with a copy to clipboard button
-    name_safe = quote(name)
-
-    feed_url = f'https://mat.uab.cat/~masdeu/teaching/misc/calendari_professor.php?nom={name_safe}&feed=true'
+    name_safe = quote(name)    
+    feed_url = f'https://mat.uab.cat/~masdeu/teaching/misc/calendari_professor.php?nom={name_safe}&holidays={str(include_holidays).lower()}&feed=true'
 
     with nullcontext(sys.stdout) as f:
+        # Render feed URL box with a checkbox to toggle inclusion of holidays
         f.write('''
         <div style="margin-bottom: 10px;">
         URL del feed iCal:<br>
         <input type="text" id="feedUrl" value="''' + feed_url + '" readonly>'\
         + '''
         <button id="copyFeedUrl">Copia</button>
+        <label style="margin-left:10px; font-weight:normal;">
+          <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
+          Incloure dies no lectius
+        </label>
         </div>
         <script>
-        document.getElementById("copyFeedUrl").addEventListener("click", function() {
-            var copyText = document.getElementById("feedUrl");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999); // For mobile devices
-            document.execCommand("copy");
-            alert("Copiat l'URL del feed: " + copyText.value);
-        });
+        (function(){
+            var feedInput = document.getElementById("feedUrl");
+            var checkbox = document.getElementById("includeHolidays");
+            var copyBtn = document.getElementById("copyFeedUrl");
+
+            function updateFeedUrl() {
+                var url = feedInput.value;
+                // Replace existing holidays parameter if present, otherwise append it
+                if (url.indexOf("&holidays=") >= 0) {
+                    url = url.replace(/(&holidays=)(true|false)/, '$1' + (checkbox.checked ? 'true' : 'false'));
+                } else if (url.indexOf("?") >= 0) {
+                    url = url + '&holidays=' + (checkbox.checked ? 'true' : 'false');
+                } else {
+                    url = url + '?holidays=' + (checkbox.checked ? 'true' : 'false');
+                }
+                feedInput.value = url;
+            }
+
+            checkbox.addEventListener('change', updateFeedUrl);
+
+            copyBtn.addEventListener("click", function() {
+                feedInput.select();
+                feedInput.setSelectionRange(0, 99999); // For mobile
+                document.execCommand("copy");
+                alert("Copiat l'URL del feed: " + feedInput.value);
+            });
+        })();
         </script>
         ''')
 
-    calendar, events_fullcalendar = genera_calendari(llista_assignatures)
+    calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays)
     imprimeix_llista_assignatures(professor, llista_assignatures, html=True, outfile=None)
-    imprimeix_html(events_fullcalendar, calendar.to_ical(), None, standalone=False)
+    imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
     return
 
-def main(name, out_ics=True, out_html=True, outfile='calendari'):
+def main(name, out_ics=True, out_html=True, outfile='calendari', include_holidays=True):
     professor, llista_assignatures = get_assignatures(name)
-    calendar, events_fullcalendar = genera_calendari(llista_assignatures)
+    calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays)
     imprimeix_llista_assignatures(professor, llista_assignatures, html=False, outfile=None)
     if out_ics:
         save_ics(calendar, outfile)
