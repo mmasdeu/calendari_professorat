@@ -18,9 +18,17 @@ BROWSER_PATH = HOME + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
-def inicialitza_funcions(page, llista_assignatures):
+def carrega_assignatures(page, llista_assignatures):
     # Prepare the list of subjects
-    txt = (''.join((f'crea_element("{a.codi}", "{a.centre}", "{a.periode}"),' for a in llista_assignatures))).rstrip(',')
+    llista_assignatures_new = []
+    for a in llista_assignatures:
+        if str(a.periode) == '-1':
+            llista_assignatures_new.append(Assignatura(a.centre, a.codi, a.grup, 'A/0', a.nom))
+            llista_assignatures_new.append(Assignatura(a.centre, a.codi, a.grup, 'C/1', a.nom))
+            llista_assignatures_new.append(Assignatura(a.centre, a.codi, a.grup, 'C/2', a.nom))
+        else:
+            llista_assignatures_new.append(a)
+    txt = (''.join((f'crea_element("{a.codi}", "{a.centre}", "{a.periode}"),' for a in llista_assignatures_new))).rstrip(',')
     # Run the original logic: create elements, set #jsonBusquedaAsignaturas and submit the form
     page.evaluate("""
     () => {
@@ -77,6 +85,10 @@ def descarrega_calendari_sia(page):
             });
         })();
     """)
+    # Expect blobData to be of length > 0
+    while page.evaluate("document.blobData") is None:
+        page.wait_for_timeout(10)
+    return Calendar.from_ical(page.evaluate("document.blobData"))
 
 
 def genera_assignatures(page):
@@ -199,7 +211,7 @@ def genera_assignatures(page):
                 var name = ('"' + p[2] + '"') || '""';
                 var grp = ('"' + p[3] + '"') || '""';
                 var period = ('"' + p[4] + '"') || '""';
-                lines.push('(' + code + ', ' + codicentre + ', ' + grp + (period ? ', '+period : '') + (name ? ', '+name : '') + ')');
+                lines.push('(' + codicentre + ', ' + code + ', ' + grp + (period ? ', '+period : '') + (name ? ', '+name : '') + ')');
             });
             });
             document.llista_assignatures = '[' + lines.join(',') + ']';
@@ -209,9 +221,9 @@ def genera_assignatures(page):
     ''')
 
 class Assignatura():
-    def __init__(self, codi, centre, grup, periode, nom):
-        self.codi = str(codi)
+    def __init__(self, centre, codi, grup=-1, periode=-1, nom=''):
         self.centre = str(centre)
+        self.codi = str(codi)        
         self.grup = str(grup)
         self.periode = str(periode)
         self.nom = str(nom)
@@ -236,7 +248,7 @@ class Assignatura():
         return base_colors[index]
 
     def __iter__(self):
-        return iter((self.codi, self.centre, self.grup, self.periode, self.nom))
+        return iter((self.centre, self.codi, self.grup, self.periode, self.nom))
     
 def t_abbrev(tipus_full, grup=None):
     tipus_abbrev = {
@@ -265,12 +277,13 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
     with open(outfile + '.html', 'w') if outfile else nullcontext(sys.stdout) as f:
         if standalone:
             f.write('<html><head>\
-            <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">\
-            <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/dist/index.global.js">\
-            </script><script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js">\
-            </script><script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/locales-all.min.js"></script>\
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.css">\
+            <link rel="stylesheet" href="calendari_style.css">\
+            <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.js"></script>\
+            <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/locales-all.min.js"></script>\
+            <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js"></script>\
+            <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>\
             </head><body>\n')
-                
         f.write('<button id="icaldownload" style="float: right; margin-bottom: 10px;">Descarrega iCal</button>\n')
         f.write('<div id="calendar"></div>\n')
         f.write('<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>')
@@ -298,10 +311,23 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
                     var byteArray = new Uint8Array(byteNumbers);
                     var blob = new Blob([byteArray], { type: 'text/calendar' });
                     document.icsBlob = blob;
-
+                
                 var calendar = new FullCalendar.Calendar(calendarEl, {
-                    initialView: "listMonth",
+
+                   initialView: "listMonth",
+                    headerToolbar: {
+                        left: 'prev,next,today',
+                        center: 'title',
+                        right: 'listMonth,timeGridWeek'
+                    },
                     contentHeight:"auto",
+                    views: {
+                        timeGridWeek: {
+                            slotMinTime: "08:00:00",
+                            slotMaxTime: "20:00:00"
+                        }
+                    },
+                    weekends: false,                 
                     events: $eventsJSON,
                     locale: "ca",
                     });
@@ -361,6 +387,9 @@ def get_assignatures(name):
     return professor, llista_assignatures
 
 def genera_calendari(llista_assignatures, include_holidays=True):
+    if not isinstance(llista_assignatures, list):
+        llista_assignatures = [llista_assignatures]
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, executable_path=BROWSER_PATH)
         # navigate to page
@@ -378,18 +407,11 @@ def genera_calendari(llista_assignatures, include_holidays=True):
         # Wait until the form is completely loaded
         expect(page.get_by_text("Veure Calendari")).to_be_visible(timeout=10000)
 
-        inicialitza_funcions(page, llista_assignatures)
+        carrega_assignatures(page, llista_assignatures)
 
         expect(page.get_by_text("Tornar")).to_be_visible(timeout=10000)
 
-        _ = descarrega_calendari_sia(page)
-
-        # Expect blobData to be of length > 0
-        while page.evaluate("document.blobData") is None:
-            page.wait_for_timeout(100)
-
-        # Convert document.blobData to something we can use
-        calendar = Calendar.from_ical(page.evaluate("document.blobData"))
+        calendar = descarrega_calendari_sia(page)
         browser.close()
 
         # Process events and keep only those corresponding to our subjects
@@ -408,7 +430,7 @@ def genera_calendari(llista_assignatures, include_holidays=True):
                 codi, nom_assignatura, grup, tipus = match.groups()
                 title = f'{codi} {nom_assignatura} ({t_abbrev(tipus)} - Grup {grup}) ➤ {lloc}'
                 a = next((a for a in llista_assignatures if a.codi == codi and\
-                         (a.grup == t_abbrev(tipus,grup) or t_abbrev(tipus) == 'EX')), None)
+                         ((a.grup == '-1') or (a.grup == t_abbrev(tipus,grup)) or (t_abbrev(tipus) == 'EX'))), None)
                 if a is not None:
                     event = Event()
                     event['SUMMARY'] = data
@@ -443,14 +465,14 @@ def imprimeix_llista_assignatures(professor, llista_assignatures, html=True, out
         end = ''
         sep = 30 * '-'
         tab = '\t'
-    dict_assignatures = {(a.codi, a.centre, a.periode) : [] for a in llista_assignatures}
+    dict_assignatures = {(a.centre, a.codi, a.periode) : [] for a in llista_assignatures}
     for a in llista_assignatures:
-        dict_assignatures[(a.codi, a.centre, a.periode)].append(a)
+        dict_assignatures[(a.centre, a.codi, a.periode)].append(a)
     with open(outfile + '.html', 'w') if outfile else nullcontext(sys.stdout) as f:
         f.write(f'Professor/a trobat: {professor}' + end + end)
         f.write(f'Centre/Codi{tab}Nom de l\'assignatura{tab}(Període), grups' + end)
         f.write(sep)
-        for (codi, centre, periode), assignatures in dict_assignatures.items():
+        for (centre, codi, periode), assignatures in dict_assignatures.items():
             linia = f'{centre}/{codi}\t{assignatures[0].nom_curt()}\t({periode}), '
             grups = ', '.join(sorted(set(a.grup for a in assignatures)))
             linia += grups
@@ -464,13 +486,17 @@ def fes_feed(name, include_holidays=True):
     sys.stdout.buffer.write(calendar.to_ical())
     return
 
-def fes_web_assignatura(assignatura, include_holidays=True):
-    llista_assignatures = [assignatura]
-    calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays)
+def fes_web_assignatura(centre, codi, include_holidays=True):
+    assignatura = Assignatura(centre, codi)
+    calendar, events_fullcalendar = genera_calendari(assignatura, include_holidays=include_holidays)
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
     return
 
 def fes_web_calendari(name, include_holidays=True):
+    if '/' in name:
+        centre, codi = name.split('/', 1)
+        return fes_web_assignatura(centre, codi, include_holidays=include_holidays)
+
     professor, llista_assignatures = get_assignatures(name)
 
     if professor is None:
@@ -487,11 +513,9 @@ def fes_web_calendari(name, include_holidays=True):
         URL del feed iCal:<br>
         <input type="text" id="feedUrl" value="''' + feed_url + '" readonly>'\
         + '''
-        <button id="copyFeedUrl">Copia</button>
-        <label style="margin-left:10px; font-weight:normal;">
+        <button id="copyFeedUrl">Copia</button><label style="margin-left:10px; font-weight:normal;">
           <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
-          Incloure dies no lectius
-        </label>
+        Incloure dies no lectius</label>
         </div>
         <script>
         (function(){

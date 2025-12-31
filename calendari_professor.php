@@ -88,13 +88,15 @@ function run_python_code($code) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <link rel="stylesheet" href="https://matcha.mizu.sh/matcha.css">
-            <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
-                <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/dist/index.global.js">
-                </script><script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js">
-                </script><script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/locales-all.min.js">
-                <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.css">
+  <link rel="stylesheet" href="calendari_style.css">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/locales-all.min.js"></script>
+  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js'></script>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Calendari del Professor</title>
 </head>
 <style>
@@ -157,7 +159,6 @@ function run_python_code($code) {
 </style>
 
 <body>
-
     <?php if (!empty($nom)): ?>
     <div style="text-align: center; font-size: 1.2em; margin-bottom: 1em;">
       <strong>Calendari generat per: <?= htmlspecialchars($nom) ?></strong>
@@ -167,17 +168,14 @@ function run_python_code($code) {
         // Preserve holidays checkbox state across submissions; default to checked
         $holidays_checked = isset($_REQUEST['holidays']) ? (($_REQUEST['holidays'] === 'true') ? 'checked' : '') : 'checked';
       ?>
-      <form method="POST" class="step-form" action="#resultat">
-        <label for="nom">Introdueix el nom</label>
-        <input type="text" name="nom" id="nom" placeholder="Carl Friedrich Gauss" required>
-        <label for="holidays" style="font-weight: normal;">
-          <input type="checkbox" id="holidays" name="holidays" value="true" <?php echo $holidays_checked; ?>>
-          Incloure festius i no lectius
-        </label>
+      <form method="POST" action="#resultat">
+        <label><small>Nom professor/a o codi assignatura:</small><input type="text" size=30 name="nom" id="nom" placeholder="Carl Friedrich Gauss o 103/100088" required></label>
+        <label><input type="checkbox" id="holidays" name="holidays" value="true" <?php echo $holidays_checked; ?>><small>Incloure festius i no lectius</small></label>
         <button type="submit" name="action" value="genera">Genera</button>
       </form>
   <?php endif; ?>
   <?php if (!empty($resultat)): ?>
+  
         <?= $resultat ?>
         
   <?php endif; ?>
