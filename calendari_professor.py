@@ -91,8 +91,7 @@ def descarrega_calendari_sia(page):
     return Calendar.from_ical(page.evaluate("document.blobData"))
 
 
-def genera_assignatures(page):
-    page.evaluate('''
+text_genera_assignatures = '''
         (function(){
         function collectCodes(){
             var tables = document.querySelectorAll('table.tablaFicha.taulaFitxa.centros');
@@ -218,7 +217,7 @@ def genera_assignatures(page):
         // For debugging: also expose a function to get the data object
         window.collectSiaCodesData = collectCodes;
         })();   
-    ''')
+    '''
 
 class Assignatura():
     def __init__(self, centre, codi, grup=-1, periode=-1, nom=''):
@@ -378,8 +377,8 @@ def get_assignatures(name):
         except TimeoutError:
             eprint(f"No s'ha trobat cap professor/a amb el nom '{name}'.")
             browser.close()
-            return None, []     
-        genera_assignatures(page)
+            return None, []
+        page.evaluate(text_genera_assignatures)     
         while page.evaluate("document.llista_assignatures") is None:
             page.wait_for_timeout(100)
         llista_assignatures = [Assignatura(*o) for o in eval(page.evaluate('document.llista_assignatures'))]
@@ -506,50 +505,50 @@ def fes_web_calendari(name, include_holidays=True):
     name_safe = quote(name)    
     feed_url = f'https://mat.uab.cat/~masdeu/teaching/misc/calendari_professor.php?nom={name_safe}&holidays={str(include_holidays).lower()}&feed=true'
 
-    with nullcontext(sys.stdout) as f:
-        # Render feed URL box with a checkbox to toggle inclusion of holidays
-        f.write('''
-        <div style="margin-bottom: 10px;">
-        URL del feed iCal:<br>
-        <input type="text" id="feedUrl" value="''' + feed_url + '" readonly>'\
-        + '''
-        <button id="copyFeedUrl">Copia</button><label style="margin-left:10px; font-weight:normal;">
-          <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
-        Incloure dies no lectius</label>
-        </div>
-        <script>
-        (function(){
-            var feedInput = document.getElementById("feedUrl");
-            var checkbox = document.getElementById("includeHolidays");
-            var copyBtn = document.getElementById("copyFeedUrl");
+    # Render feed URL box with a checkbox to toggle inclusion of holidays
+    print('''
+    <div style="margin-bottom: 10px;">
+    URL del feed iCal:<br>
+    <input type="text" id="feedUrl" value="''' + feed_url + '" readonly>'\
+    + '''
+    <button id="copyFeedUrl">Copia</button><label style="margin-left:10px; font-weight:normal;">
+        <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
+    Incloure dies no lectius</label>
+    </div>
+    <script>
+    (function(){
+        var feedInput = document.getElementById("feedUrl");
+        var checkbox = document.getElementById("includeHolidays");
+        var copyBtn = document.getElementById("copyFeedUrl");
 
-            function updateFeedUrl() {
-                var url = feedInput.value;
-                // Replace existing holidays parameter if present, otherwise append it
-                if (url.indexOf("&holidays=") >= 0) {
-                    url = url.replace(/(&holidays=)(true|false)/, '$1' + (checkbox.checked ? 'true' : 'false'));
-                } else if (url.indexOf("?") >= 0) {
-                    url = url + '&holidays=' + (checkbox.checked ? 'true' : 'false');
-                } else {
-                    url = url + '?holidays=' + (checkbox.checked ? 'true' : 'false');
-                }
-                feedInput.value = url;
+        function updateFeedUrl() {
+            var url = feedInput.value;
+            // Replace existing holidays parameter if present, otherwise append it
+            if (url.indexOf("&holidays=") >= 0) {
+                url = url.replace(/(&holidays=)(true|false)/, '$1' + (checkbox.checked ? 'true' : 'false'));
+            } else if (url.indexOf("?") >= 0) {
+                url = url + '&holidays=' + (checkbox.checked ? 'true' : 'false');
+            } else {
+                url = url + '?holidays=' + (checkbox.checked ? 'true' : 'false');
             }
+            feedInput.value = url;
+        }
 
-            checkbox.addEventListener('change', updateFeedUrl);
+        checkbox.addEventListener('change', updateFeedUrl);
 
-            copyBtn.addEventListener("click", function() {
-                feedInput.select();
-                feedInput.setSelectionRange(0, 99999); // For mobile
-                document.execCommand("copy");
-                alert("Copiat l'URL del feed: " + feedInput.value);
-            });
-        })();
-        </script>
-        ''')
-
+        copyBtn.addEventListener("click", function() {
+            feedInput.select();
+            feedInput.setSelectionRange(0, 99999); // For mobile
+            document.execCommand("copy");
+            alert("Copiat l'URL del feed: " + feedInput.value);
+        });
+    })();
+    </script>
+    ''')
+    sys.stdout.flush()
     calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays)
     imprimeix_llista_assignatures(professor, llista_assignatures, html=True, outfile=None)
+    sys.stdout.flush()
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
     return
 

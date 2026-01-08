@@ -159,9 +159,9 @@ function run_python_code($code) {
 </style>
 
 <body>
-    <?php if (!empty($nom)): ?>
+  <?php if (!empty($nom)): ?>
     <div style="text-align: center; font-size: 1.2em; margin-bottom: 1em;">
-      <strong>Calendari generat per: <?= htmlspecialchars($nom) ?></strong>
+      Calendari generat per: <strong><?= htmlspecialchars($nom) ?></strong>
     </div>
   <?php else: ?>
       <?php
@@ -175,9 +175,7 @@ function run_python_code($code) {
       </form>
   <?php endif; ?>
   <?php if (!empty($resultat)): ?>
-  
-        <?= $resultat ?>
-        
+     <?= $resultat ?>
   <?php endif; ?>
 </body>
 </html>
