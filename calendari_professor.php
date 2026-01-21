@@ -9,7 +9,7 @@ $output_scp = null;
 $return_var = null;
 
 function make_python_code($nom, $include_holidays = false) {
-    return "-m fire calendari_professor.py fes_web_calendari --name=\"" . $nom . "\"" . ($include_holidays ? " --include_holidays=True" : " --include_holidays=False");
+    return "calendari_professor.py fes_web_calendari --name=\"" . $nom . "\"" . ($include_holidays ? " --include_holidays=True" : " --include_holidays=False");
 };
 
 if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
@@ -59,7 +59,7 @@ if (isset($_GET['nom'])) {
 
 // Helper function
 function run_python_code($code) {
-    $cmd = "/home/masdeu/miniforge3/bin/conda run -n base python $code";
+    $cmd = "/home/masdeu/miniforge3/bin/python $code";
 
     $process = proc_open($cmd, [['pipe','r'], ['pipe','w'], ['pipe','w']], $pipes);
 
@@ -88,7 +88,6 @@ function run_python_code($code) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.css">
   <link rel="stylesheet" href="calendari_style.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.js"></script>
@@ -99,65 +98,6 @@ function run_python_code($code) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Calendari del Professor</title>
 </head>
-<style>
-.col {
-    background: #f0f0f0; 
-    width: 230px; 
-    padding: 10px; 
-    font-size: 1.5em; 
-    word-wrap: break-word; 
-}  
-
-  body {
-    background-color: white;
-    color: black;
-  }
-
-  div {
-    word-wrap: break-word;         /* All browsers since IE 5.5+ */
-    overflow-wrap: break-word;     /* Renamed property in CSS3 draft spec */
-    width: 100%;
-    white-space: normal; /* Prevents text from overflowing */
-  }
-
-  .step-form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8em;
-    margin-top: 1em;
-    width: 250px;
-  }
-
-  .step-form label {
-    font-weight: bold;
-    justify-content: center;
-
-  }
-
-  .step-form input,
-  .step-form button {
-    max-width: 300px;
-    justify-content: center;    
-  }
-
-  @media (prefers-color-scheme: dark) {
-    body {
-      background-color: #121212;
-      color: #e0e0e0;
-    }
-
-    a {
-      color: #80cfff;
-    }
-
-    input, button {
-      background-color: #2c2c2c;
-      color: white;
-      border: 1px solid #555;
-    }
-  }
-</style>
-
 <body>
   <?php if (!empty($nom)): ?>
     <div style="text-align: center; font-size: 1.2em; margin-bottom: 1em;">

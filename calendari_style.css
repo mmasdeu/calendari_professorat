@@ -1198,3 +1198,60 @@ small {
 }
 
 /** Your custom extra CSS here */
+
+.col {
+    background: #f0f0f0; 
+    width: 230px; 
+    padding: 10px; 
+    font-size: 1.5em; 
+    word-wrap: break-word; 
+}  
+
+body {
+  background-color: white;
+  color: black;
+}
+
+div {
+  word-wrap: break-word;         /* All browsers since IE 5.5+ */
+  overflow-wrap: break-word;     /* Renamed property in CSS3 draft spec */
+  width: 100%;
+  white-space: normal; /* Prevents text from overflowing */
+}
+
+.step-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+  margin-top: 1em;
+  width: 250px;
+}
+
+.step-form label {
+  font-weight: bold;
+  justify-content: center;
+
+}
+
+.step-form input,
+.step-form button {
+  max-width: 300px;
+  justify-content: center;    
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #121212;
+    color: #e0e0e0;
+  }
+
+  a {
+    color: #80cfff;
+  }
+
+  input, button {
+    background-color: #2c2c2c;
+    color: white;
+    border: 1px solid #555;
+  }
+}
