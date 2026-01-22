@@ -28,6 +28,13 @@ if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
         $resultat = "Error generating feed: " . $output['stderr'];
     }
 }
+// Prefer GET (non-feed) over POST; handle form POST otherwise
+elseif (isset($_GET['nom'])) {
+  handle_nom_request($_GET['nom'], $_GET['holidays'] ?? null);
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nom'])) {
+  handle_nom_request($_POST['nom'], $_POST['holidays'] ?? null);
+}
+
 
 // Unified request handling for GET/POST 'nom' (excluding feed handling above)
 function handle_nom_request($raw_nom, $holidays_option) {
@@ -50,12 +57,6 @@ function handle_nom_request($raw_nom, $holidays_option) {
   $resultat = $output['success'] ? $output['stdout'] : "Error: " . $output['stderr'];
 }
 
-// Prefer GET (non-feed) over POST; handle form POST otherwise
-if (isset($_GET['nom'])) {
-  handle_nom_request($_GET['nom'], $_GET['holidays'] ?? null);
-} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nom'])) {
-  handle_nom_request($_POST['nom'], $_POST['holidays'] ?? null);
-}
 
 // Helper function
 function run_python_code($code) {

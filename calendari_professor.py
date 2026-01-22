@@ -1,7 +1,9 @@
+from hmac import new
 from tkinter import W
 from playwright.sync_api import sync_playwright, expect, Error
 from playwright._impl._errors import TimeoutError
 from icalendar import Calendar, Event, vDatetime, vDate
+from uuid import uuid4
 from urllib.parse import quote
 import sys, os, re, base64, fire
 from webbrowser import open as webbrowser_open
@@ -15,6 +17,7 @@ HOME = os.getenv('HOME')
 if 'home' not in HOME:
     HOME = '/home/masdeu'  # default fallback for use with things like /var/www
 BROWSER_PATH = HOME + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"  # <-- set the path to your Chromium browser executable
+CACHED_CALENDARS_DIR = HOME + '/cached_calendars'  # Directory to cache downloaded calendars
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -367,13 +370,39 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
         eprint('Visita la pàgina', 'file://' + base_folder + '/' + outfile + '.html per veure el calendari.')
         # webbrowser_open('file://' + base_folder + '/' + outfile + '.html')
 
+def find_professor_number(name):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, executable_path=BROWSER_PATH)
+        # navigate to page
+        page = browser.new_page()
+        while True:
+            try:
+                page.goto(URL_TPD)
+                break
+            except Error:
+                sleep(.2)
+                page.goto(URL_TPD)        
+        page.get_by_role('link', name='Pla Docent per departament').click(force=True)
+        page.get_by_role('gridcell', name='Departament de matemàtiques').click(force=True)
+        page.wait_for_load_state('networkidle')
+        nprofs = page.locator('[class="profesorDepartamento"]').count()
+        for i in range(nprofs):
+            link = page.locator('[class="profesorDepartamento"]').nth(i)
+            professor = link.inner_text()
+            if all(n.strip().lower() in professor.strip().lower() for n in name.split(' ')):
+                eprint(f'Professor/a "{professor}" trobat al número {i}.')
+                browser.close()
+                return i
+        browser.close()
+    return None
+
 def build_database(start = 0, end=None):
     if start == -1:
-        # Find oldest file in data/
-        os_files = [f for f in os.listdir('data') if f.startswith('prof_') and f.endswith('.data')]
+        # Find oldest file in cached_calendars/
+        os_files = [f for f in os.listdir(CACHED_CALENDARS_DIR) if f.startswith('prof_') and f.endswith('.data')]
         # Calculate the oldest modification time
         try:
-            oldest_file = min(os_files, key=lambda f: os.path.getmtime(os.path.join('data', f)))
+            oldest_file = min(os_files, key=lambda f: os.path.getmtime(os.path.join(CACHED_CALENDARS_DIR, f)))
             start = int(oldest_file.split('_')[1])
             end = start + 1
         except ValueError:
@@ -399,7 +428,7 @@ def build_database(start = 0, end=None):
         eprint('Total professors found:', nprofs)
         end = nprofs
     for i in range(start, end):
-
+        ans = []
         while True:
             try:
                 professor, assignatures = get_assignatures_nthprofessor(i)
@@ -411,16 +440,21 @@ def build_database(start = 0, end=None):
         sys.stderr.flush()
         if len(assignatures) > 0:
             prof_str = professor.replace(' ', '_').replace('/', '_').replace(',', '_')
-            fname = f'data/prof_{i:03}_{prof_str}.data'
+            fname = f'{CACHED_CALENDARS_DIR}/prof_{i:03}_{prof_str}.data'
             cal = descarrega_calendari(assignatures)
+            if cal is None:
+                eprint('Error descarregant el calendari per al professor/a', professor)
+                continue
             with open(fname, "wb") as f:
                 f.write(professor.encode('utf-8') + b'\n')
                 f.write(str(len(assignatures)).encode('utf-8') + b'\n')
                 for a in assignatures:
                     f.write(a.to_string().encode('utf-8') + b'\n')
                 f.write(cal.to_ical())
+            os.chmod(fname, 0o666)
         eprint('Fet!')
-
+        ans.append((professor, assignatures, cal))
+    return ans
 
 def get_assignatures_nthprofessor(n):
     with sync_playwright() as p:
@@ -507,23 +541,24 @@ def descarrega_calendari(llista_assignatures):
         expect(page.get_by_text("Veure Calendari")).to_be_visible(timeout=20000)
 
         carrega_assignatures(page, llista_assignatures)
-        while True:
-            try:
-                expect(page.get_by_text("Tornar")).to_be_visible(timeout=20000)
-                break
-            except (AssertionError,TimeoutError):
-                eprint('Esperant que es carregui el calendari...')
-                sleep(1)
-        calendar = descarrega_calendari_sia(page)
+        try:
+            expect(page.get_by_text("Tornar")).to_be_visible(timeout=20000)
+            calendar = descarrega_calendari_sia(page)
+        except (AssertionError,TimeoutError):
+            eprint('Error al carregar el calendari...')
+            calendar = None
         browser.close()
     return calendar
 
 def genera_calendari(llista_assignatures, include_holidays=True, calendari=None):
     # Process events and keep only those corresponding to our subjects
-    if calendari is None:
-        calendari = descarrega_calendari(llista_assignatures)
     newcal = Calendar()
     events_fullcalendar = []
+    if calendari is None:
+        calendari = descarrega_calendari(llista_assignatures)
+    if calendari is None:
+        eprint('Error: No s\'ha pogut descarregar el calendari.')
+        return newcal, events_fullcalendar
     for event in calendari.events:
         data = str(event.get('SUMMARY'))
         lloc = 'Aula ' + str(event.get('LOCATION')).replace('Aula de docència', '').replace('d`', '').strip(' - ').strip()
@@ -544,6 +579,8 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None)
                 event['LOCATION'] = lloc
                 event.add('dtstart', vDatetime(start.dt))
                 event.add('dtend', vDatetime(end.dt))  # make end date exclusive
+                event.add('DTSTAMP', event.get('DTSTAMP') if event.get('DTSTAMP') else vDatetime(start.dt))
+                event.add('UID', str(uuid4()) + '@mat.uab.cat')
                 newcal.add_component(event)
                 events_fullcalendar.append((title, str(start.dt), str(end.dt), a.color(), False))
         elif include_holidays and start.dt.weekday() <= 4:  # Dies no lectius o similar
@@ -559,6 +596,8 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None)
             else:
                 event.add('dtstart', vDatetime(start.dt))
                 event.add('dtend', vDatetime(end.dt))
+            event.add('DTSTAMP', event.get('DTSTAMP') if event.get('DTSTAMP') else vDatetime(start.dt))
+            event.add('UID', str(uuid4()) + '@mat.uab.cat')
             newcal.add_component(event) # Add non-lecture days to the ICS
             events_fullcalendar.append((data, str(start.dt), str(end.dt), '#808080', True))
     return newcal, events_fullcalendar
@@ -586,9 +625,11 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None):
         f.write(sep)
 
 def fes_feed(name, include_holidays=True):
-    _, llista_assignatures = get_assignatures(name)
-    calendar, _ = genera_calendari(llista_assignatures, include_holidays=include_holidays)
-    # Generaate ICS feed directly to stdout
+    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name)
+    if professor is None:
+        return
+    calendar, _ = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari)
+    # Generate ICS feed directly to stdout
     sys.stdout.buffer.write(calendar.to_ical())
     return
 
@@ -598,17 +639,13 @@ def fes_web_assignatura(centre, codi, include_holidays=True):
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
     return
 
-def fes_web_calendari(name, include_holidays=True):
-    if '/' in name:
-        centre, codi = name.split('/', 1)
-        return fes_web_assignatura(centre, codi, include_holidays=include_holidays)
-
-    # Use file database
+def llegeix_fitxer_calendari(name):
+    # Use cached_calendars directory
     name_words = [n.strip().lower() for n in name.split(' ')]
-    os_files = [f for f in os.listdir('data') if f.startswith('prof_') and f.endswith('.data')]
+    os_files = [f for f in os.listdir(CACHED_CALENDARS_DIR) if f.startswith('prof_') and f.endswith('.data')]
     fname = next((f for f in os_files if all(n in f.lower() for n in name_words)), None)
     if fname is not None:
-        with open('data/' + fname, 'rb') as f:
+        with open(os.path.join(CACHED_CALENDARS_DIR, fname), 'rb') as f:
             professor = f.readline().decode('utf-8').strip()
             n_assignatures = int(f.readline().decode('utf-8').strip())
             llista_assignatures = []
@@ -616,9 +653,23 @@ def fes_web_calendari(name, include_holidays=True):
                 a = Assignatura(f.readline().decode('utf-8').strip())
                 llista_assignatures.append(a)
             calendari = Calendar.from_ical(f.read())
-            print('Loaded data for professor:', professor, file=sys.stderr)
+            eprint('Loaded data for professor:', professor)
     else:
         print('No s\'ha trobat cap professor/a amb el nom especificat.\n')
+        n = find_professor_number(name)
+        if n is None:
+            return None, None, None
+        else:
+            return build_database(start=n, end=n+1)[0]
+    return professor, llista_assignatures, calendari
+
+def fes_web_calendari(name, include_holidays=True):
+    if '/' in name:
+        centre, codi = name.split('/', 1)
+        return fes_web_assignatura(centre, codi, include_holidays=include_holidays)
+
+    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name)
+    if professor is None:
         return
 
     # Write feed generating url in a box, with a copy to clipboard button
@@ -674,25 +725,9 @@ def fes_web_calendari(name, include_holidays=True):
     return
 
 def main(name, out_ics=True, out_html=True, outfile='calendari', include_holidays=True):
-    # Use file database
-    name_words = [n.strip().lower() for n in name.split(' ')]
-    os_files = [f for f in os.listdir('data') if f.startswith('prof_') and f.endswith('.data')]
-    fname = next((f for f in os_files if all(n in f.lower() for n in name_words)), None)
-    if fname is not None:
-        with open('data/' + fname, 'rb') as f:
-            professor = f.readline().decode('utf-8').strip()
-            n_assignatures = int(f.readline().decode('utf-8').strip())
-            llista_assignatures = []
-            for _ in range(n_assignatures):
-                a = Assignatura(f.readline().decode('utf-8').strip())
-                llista_assignatures.append(a)
-            calendari = Calendar.from_ical(f.read())
-            print('Loaded data for professor:', professor, file=sys.stderr)
-    else:
-        print('No s\'ha trobat cap professor/a amb el nom especificat.\n')
+    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name)
+    if professor is None:
         return
-
-    # professor, llista_assignatures = get_assignatures(name)
     calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari)
     print(f'Professor/a trobat: {professor}')
     imprimeix_llista_assignatures(llista_assignatures, html=False, outfile=None)
