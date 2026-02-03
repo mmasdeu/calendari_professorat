@@ -12,11 +12,25 @@ function make_python_code($nom, $include_holidays = false) {
     return "calendari_professor.py fes_web_calendari --name=\"" . $nom . "\"" . ($include_holidays ? " --include_holidays=True" : " --include_holidays=False");
 };
 
+function build_block_list_arg($raw_block) {
+    $blocks = [];
+    foreach ((array)$raw_block as $chunk) {
+        foreach (explode(',', (string)$chunk) as $v) {
+            $v = trim($v);
+            if ($v !== '') $blocks[] = $v;
+        }
+    }
+    if (!$blocks) return '';
+    return " --block_list=" . escapeshellarg(json_encode($blocks, JSON_UNESCAPED_UNICODE));
+}
+
 if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
     // Return an iCal feed directly by invoking the Python module to emit ICS to stdout
     $nom = $_GET['nom'];
+    $block_list_arg = build_block_list_arg($_GET['block'] ?? null);
+    
     $safe_nom = escapeshellarg($nom);
-    $python_code = "calendari_professor.py fes_feed \"" . $safe_nom . "\"";
+    $python_code = "calendari_professor.py fes_feed --name=" . $safe_nom . $block_list_arg;
     $output = run_python_code($python_code);
     if ($output['success']) {
         header('Content-Type: text/calendar; charset=utf-8');
@@ -51,8 +65,9 @@ function handle_nom_request($raw_nom, $holidays_option) {
   $nom = htmlspecialchars($raw_nom, ENT_QUOTES, 'UTF-8');
 
   // Value for the python command (basic sanitization)
-  $safe_nom = filter_var($raw_nom, FILTER_SANITIZE_STRING);
-  $python_code = make_python_code($safe_nom, include_holidays: $holidays_option === 'true');
+  $safe_nom = escapeshellarg($raw_nom);
+  $block_list_arg = build_block_list_arg($_REQUEST['block'] ?? null);
+  $python_code = "calendari_professor.py fes_web_calendari --name=" . $safe_nom . ($holidays_option === 'true' ? " --include_holidays=True" : " --include_holidays=False") . $block_list_arg;
   $output = run_python_code($python_code);
   $resultat = $output['success'] ? $output['stdout'] : "Error: " . $output['stderr'];
 }
