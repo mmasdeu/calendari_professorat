@@ -1239,6 +1239,27 @@ div {
   justify-content: center;    
 }
 
+.fc .fc-toolbar > * > button ~ h2 {
+        margin: 0 .75em;
+}
+.fc .fc-toolbar > * > h2 ~ button {
+        margin-left: 0;
+}
+.fc .fc-toolbar > * > h2:first-child {
+        margin-right: .75em;
+}
+.fc .fc-toolbar > * > h2:last-child {
+        margin-right: 0;
+}
+
+.fc-event-title {
+  font-size: x-small;
+}
+
+.fc-event-time {
+  font-size: xx-small;
+}
+
 @media (prefers-color-scheme: dark) {
   body {
     background-color: #121212;

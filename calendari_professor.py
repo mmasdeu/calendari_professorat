@@ -11,11 +11,80 @@ from time import sleep
 from contextlib import nullcontext
 from datetime import date, timedelta
 
+codi_departaments  = dict([   
+(402,"Departament de Matemàtiques"),
+(403,"Departament de Química"),
+(404,"Departament de Física"),
+(405,"Departament de Geologia"),
+(406,"Departament de Bioquímica i de Biologia Molecular"),
+(407,"Departament de Biologia Animal, de Biologia Vegetal i d'Ecologia"),
+(409,"Departament de Genètica i de Microbiologia"),
+])
+
+'''
+(431,"Departament de Geografia"),
+(411,"Departament d'Economia Aplicada"),
+(412,"Departament d'Economia i d'Història Econòmica"),
+(415,"Departament de Ciències Morfològiques"),
+(416,"Departament de Cirurgia"),
+(417,"Departament de Medicina"),
+(421,"Departament de Didàctica de l'Expressió Musical, Plàstica i Corporal"),
+(422,"Departament de Didàctica de la Llengua i la Literatura i de les Ciències Socials"),
+(423,"Departament de Didàctica de la Matemàtica i de les Ciències Experimentals"),
+(426,"Departament d'Història Moderna i Contemporània"),
+(427,"Departament de Filologia Catalana"),
+(428,"Departament de Filologia Espanyola"),
+(429,"Departament de Filologia Anglesa i de Germanística"),
+(430,"Departament de Filologia Francesa i Romànica"),
+(432,"Departament de Pedagogia Aplicada"),
+(433,"Departament de Ciència Política i de Dret Públic"),
+(434,"Departament de Sociologia"),
+(436,"Departament de Filosofia"),
+(438,"Departament de Dret Privat"),
+(439,"Departament de Dret Públic i de Ciències Historicojurídiques"),
+(452,"Departament de Psicobiologia i de Metodologia de les Ciències de la Salut"),
+(454,"Departament de Ciències de l'Antiguitat i de l'Edat Mitjana"),
+(455,"Departament de Psiquiatria i de Medicina Legal"),
+(456,"Departament de Biologia Cel·lular, de Fisiologia i d'Immunologia"),
+(457,"Departament de Sanitat i d'Anatomia Animals"),
+(458,"Departament de Ciència Animal i dels Aliments"),
+(459,"Departament de Medicina i Cirurgia Animal"),
+(461,"Departament de Telecomunicació i d'Enginyeria de Sistemes"),
+(462,"Departament de Farmacologia, de Terapèutica i de Toxicologia"),
+(463,"Departament d'Enginyeria Electrònica"),
+(464,"Departament de Psicologia Bàsica, Evolutiva i de l'Educació"),
+(465,"Departament d'Antropologia Social i Cultural"),
+(466,"Departament de Prehistòria"),
+(467,"Departament de Psicologia Clínica i de la Salut"),
+(468,"Departament de Psicologia Social"),
+(469,"Departament d'Arquitectura de Computadors i Sistemes Operatius"),
+(470,"Departament de Microelectrònica i de Sistemes Electrònics"),
+(471,"Departament de Ciències de la Computació"),
+(472,"Departament d'Enginyeria de la Informació i de les Comunicacions"),
+(474,"Departament d'Art i Musicologia"),
+(477,"Departament de Mitjans, Comunicació i Cultura"),
+(478,"Departament de Periodisme i de Ciències de la Comunicació"),
+(479,"Departament d'Infermeria"),
+(483,"Departament de Publicitat, Relacions Públiques i Comunicació Audiovisual"),
+(484,"Departament de Comunicació Audiovisual i Publicitat"),
+(485,"Departament d'Empresa"),
+(492,"Sense informar en origen (Hominis-Samas-PDS)"),
+(2558,"Departament de Traducció i Interpretació i d'Estudis de l'Àsia Oriental"),
+(2634,"Departament d'Enginyeria Química, Biològica i Ambiental"),
+(2825,"Departament de Pediatria, d'Obstetrícia i Ginecologia i de Medicina Preventiva i Salut Pública"),
+(2972,"Departament de Teories de l'Educació i Pedagogia Social")
+])
+'''
+
+departaments_dict = {nom : cod for cod, nom in codi_departaments.items()}
+
 URL_TPD = "https://web01.uab.es:31501/pds/transparenciaPD/InicioTransparencia?entradaPublica=true&idioma=ca&pais=ES#"
 URL_HORARIS = "https://web01.uab.es:31501/pds/consultaPublica/look%5Bconpub%5DInicioPubHora?entradaPublica=true&idiomaPais=ca.ES"  # <-- set the page URL where the original script runs
 HOME = os.getenv('HOME')
+USER = 'masdeu'
+BASE_URL = f"https://mat.uab.cat/~{USER}/teaching/misc/"
 if 'home' not in HOME:
-    HOME = '/home/masdeu'  # default fallback for use with things like /var/www
+    HOME = f'/home/{USER}'  # default fallback for use with things like /var/www
 BROWSER_PATH = HOME + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"  # <-- set the path to your Chromium browser executable
 CACHED_CALENDARS_DIR = HOME + '/cached_calendars'  # Directory to cache downloaded calendars
 
@@ -258,16 +327,36 @@ class Assignatura():
         if len(n) < max_len:
             n = n + ' ' * (max_len - len(n))
         return n
+    
     def __repr__(self):
         return f'{self.centre}/{self.codi}\t{self.nom_curt()}\t({self.periode}), {self.grup}'
     
     def color(self):
+        # start with a palette of 20 distinct colors (enough for all subjects without needing to repeat)
         base_colors = [
-            "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
-            "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
-            "#bcbd22", "#17becf"
+            '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+            '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+            '#393b79', '#637939', '#8c6d31', '#843c39', '#7b4173',
+            '#3182bd', '#e6550d', '#31a354', '#de2d26', '#756bb1'
         ]
-        index = (int(self.codi) + int(re.sub(r'\D', '', self.grup))) % len(base_colors)
+        index = int(self.codi) % len(base_colors)
+        # use the grup attribute to modify the color slightly (changing the brightness):
+        if self.grup != '-1':
+            # parse group number if possible
+            try:
+                grup_num = int(re.search(r'\d+', self.grup).group())
+            except:
+                grup_num = 0
+            # modify the base color by adjusting its brightness based on the group number
+            def adjust_brightness(hex_color, factor):
+                hex_color = hex_color.lstrip('#')
+                r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+                r = min(255, max(0, int(r * factor)))
+                g = min(255, max(0, int(g * factor)))
+                b = min(255, max(0, int(b * factor)))
+                return f'#{r:02x}{g:02x}{b:02x}'
+            brightness_factor = 1 + (grup_num % 3) * 0.1  # vary brightness by up to ±20%
+            return adjust_brightness(base_colors[index], brightness_factor)
         return base_colors[index]
 
     def __iter__(self):
@@ -338,11 +427,16 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
                 
                 var calendar = new FullCalendar.Calendar(calendarEl, {
 
-                   initialView: "listMonth",
+                   initialView: "timeGridWeek",
                     headerToolbar: {
                         left: 'prev,next,today',
                         center: 'title',
-                        right: 'listMonth,timeGridWeek'
+                        right: 'timeGridWeek,listMonth'
+                    },
+                      titleFormat: { // will produce something like "Tuesday, September 18, 2018"
+                        month: 'numeric',
+                        year: 'numeric',
+                        day: 'numeric'
                     },
                     contentHeight:"auto",
                     views: {
@@ -376,7 +470,9 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
         eprint('Visita la pàgina', 'file://' + base_folder + '/' + outfile + '.html per veure el calendari.')
         # webbrowser_open('file://' + base_folder + '/' + outfile + '.html')
 
-def find_professor_number(name):
+def find_professor_number(name, codi):
+    codi = int(codi)
+    departament = codi_departaments[codi]
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, executable_path=BROWSER_PATH)
         # navigate to page
@@ -389,7 +485,7 @@ def find_professor_number(name):
                 sleep(.2)
                 page.goto(URL_TPD)        
         page.get_by_role('link', name='Pla Docent per departament').click(force=True)
-        page.get_by_role('gridcell', name='Departament de matemàtiques').click(force=True)
+        page.get_by_role('gridcell', name=departament).click(force=True)
         page.wait_for_load_state('networkidle')
         nprofs = page.locator('[class="profesorDepartamento"]').count()
         for i in range(nprofs):
@@ -402,12 +498,14 @@ def find_professor_number(name):
         browser.close()
     return None, None
 
-def build_database(name):
+def build_database(name, codi):
+    codi = int(codi)
     professor_names = []
+    departament = codi_departaments[codi]
     if name is None or name == 'None':
         # Find oldest file in cached_calendars/
         try:
-            os_files = [f for f in os.listdir(CACHED_CALENDARS_DIR) if f.startswith('prof_') and f.endswith('.data')]
+            os_files = [f for f in os.listdir(CACHED_CALENDARS_DIR) if f.startswith(f'prof_{codi}_') and f.endswith('.data')]
         except FileNotFoundError:
             os_files = []
         # Calculate the oldest modification time
@@ -417,12 +515,8 @@ def build_database(name):
             with open(os.path.join(CACHED_CALENDARS_DIR, oldest_file), 'r') as of:
                 fullname = of.readline().strip('\n')
             professor_names = [fullname]
-            # start = int(oldest_file.split('_')[1])
-            # end = start + 1
         except ValueError:
             professor_names = []
-            # start = 0
-            # end = None
     elif name == 'all':
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, executable_path=BROWSER_PATH)
@@ -436,7 +530,7 @@ def build_database(name):
                     sleep(.2)
                     page.goto(URL_TPD)        
             page.get_by_role('link', name='Pla Docent per departament').click(force=True)
-            page.get_by_role('gridcell', name='Departament de matemàtiques').click(force=True)
+            page.get_by_role('gridcell', name=departament).click(force=True)
             page.wait_for_load_state('networkidle')
             loc = page.locator('[class="profesorDepartamento"]')
             nprofs = loc.count()
@@ -449,16 +543,18 @@ def build_database(name):
     for fullname in professor_names:
         while True:
             try:
-                professor, assignatures = get_assignatures(fullname, exact=False)
+                professor, assignatures = get_assignatures(fullname, codi, exact=False)
                 break
             except Exception as e:
                 eprint(f'Error obtenint assignatures del professor/a {fullname}: ', str(e))
                 sleep(1)
+        # Elimina assignatures que no es volen processar (per exemple, les pràctiques externes)
+        assignatures = [a for a in assignatures if a.codi not in ['68000'] and a.codi[:2] != '69']
         eprint('Processant professor', professor, 'amb', len(assignatures), 'assignatures...', end=' ')
         sys.stderr.flush()
         if len(assignatures) > 0:
             prof_str = professor.replace(' ', '_').replace('/', '_').replace(',', '_')
-            fname = f'{CACHED_CALENDARS_DIR}/prof_{prof_str}.data'
+            fname = f'{CACHED_CALENDARS_DIR}/prof_{codi}_{prof_str}.data'
             cal = descarrega_calendari(assignatures)
             if cal is None:
                 eprint('Error descarregant el calendari per al professor/a', professor)
@@ -478,7 +574,9 @@ def build_database(name):
     return ans
 
 
-def get_assignatures_nthprofessor(n):
+def get_assignatures_nthprofessor(n, codi):
+    codi = int(codi)
+    departament = departaments_dict[codi]
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, executable_path=BROWSER_PATH)
         # navigate to page
@@ -491,7 +589,7 @@ def get_assignatures_nthprofessor(n):
                 sleep(.2)
                 page.goto(URL_TPD)
         page.get_by_role('link', name='Pla Docent per departament').click(force=True)
-        page.get_by_role('gridcell', name='Departament de matemàtiques').click(force=True)
+        page.get_by_role('gridcell', name=departament).click(force=True)
         page.wait_for_load_state('networkidle')
         link = page.locator('[class="profesorDepartamento"]').nth(n)
         professor = link.inner_text()
@@ -507,7 +605,9 @@ def get_assignatures_nthprofessor(n):
     return professor, llista_assignatures
 
 
-def get_assignatures(name, exact=False):
+def get_assignatures(name, codi, exact=False):
+    codi = int(codi)
+    departament = codi_departaments[codi]
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, executable_path=BROWSER_PATH)
         # navigate to page
@@ -520,7 +620,7 @@ def get_assignatures(name, exact=False):
                 sleep(.2)
                 page.goto(URL_TPD)
         page.get_by_role('link', name='Pla Docent per departament').click(force=True)
-        page.get_by_role('gridcell', name='Departament de matemàtiques').click(force=True)
+        page.get_by_role('gridcell', name=departament).click(force=True)
         link = page.locator('[class="profesorDepartamento"]')
         try:
             if exact:
@@ -576,8 +676,8 @@ def descarrega_calendari(llista_assignatures):
             try:
                 expect(page.get_by_text("Tornar")).to_be_visible(timeout=20000)
                 calendar = descarrega_calendari_sia(page)
-            except (AssertionError,TimeoutError):
-                eprint('Error al carregar el calendari...')
+            except (AssertionError,TimeoutError) as e:
+                eprint(f'Error al carregar el calendari: {e}')
         browser.close()
     return calendar
 
@@ -597,8 +697,8 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
         return newcal, events_fullcalendar
     for event in calendari.events:
         data = str(event.get('SUMMARY'))
-        lloc = 'Aula ' + str(event.get('LOCATION')).replace('Aula de docència', '').replace('d`', '').strip(' - ').strip()
-        if lloc == 'Aula None':
+        lloc = str(event.get('LOCATION')).replace('Aula de docència', '').replace('d`', '').strip(' - ').strip()
+        if lloc == 'None':
             lloc = '** aula no assignada **'
         start = event.get('DTSTART')
         end = event.get('DTEND')
@@ -606,7 +706,7 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
         match = re.match(r'(\d+)\s*-\s*(.*?)\s*Grup:\s*(\d+)\s*-\s*(.*)', data)
         if match:
             codi, nom_assignatura, grup, tipus = match.groups()
-            title = f'{codi} {nom_assignatura} ({t_abbrev(tipus)} - Grup {grup}) ➤ {lloc}'
+            title = f'{codi} {nom_assignatura} ({t_abbrev(tipus)}/{grup}) ➤ {lloc}'
             if str(codi) not in block_list:
                 a = next((a for a in llista_assignatures if a.codi == codi and\
                             ((a.grup == '-1') or (a.grup == t_abbrev(tipus,grup)) or (t_abbrev(tipus) == 'EX'))), None)
@@ -652,7 +752,7 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None):
     for a in llista_assignatures:
         dict_assignatures[(a.centre, a.codi, a.periode)].append(a)
     with open(outfile + '.html', 'w') if outfile else nullcontext(sys.stdout) as f:
-        f.write(f'Centre/Codi{tab}Nom de l\'assignatura{tab}(Període), grups' + end)
+        # f.write(f'Centre/Codi{tab}Nom de l\'assignatura{tab}(Període), grups' + end)
         f.write(sep)
         for (centre, codi, periode), assignatures in dict_assignatures.items():
             linia = f'{centre}/{codi}\t{assignatures[0].nom_curt()}\t({periode}), '
@@ -661,8 +761,8 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None):
             f.write(linia.replace('\t', tab) + end)
         f.write(sep)
 
-def fes_feed(name, include_holidays=True, block_list=None):
-    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name)
+def fes_feed(name, codi=402, include_holidays=True, block_list=None):
+    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name, codi)
     if professor is None:
         return
     calendar, _ = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
@@ -670,17 +770,18 @@ def fes_feed(name, include_holidays=True, block_list=None):
     sys.stdout.buffer.write(calendar.to_ical())
     return
 
-def fes_web_assignatura(centre, codi, include_holidays=True, block_list=None):
+def fes_web_assignatura(centre, codi=402, include_holidays=True, block_list=None):
     assignatura = Assignatura(centre, codi)
     calendar, events_fullcalendar = genera_calendari([assignatura], include_holidays=include_holidays, block_list=block_list)
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
     return
 
-def llegeix_fitxer_calendari(name):
+def llegeix_fitxer_calendari(name, codi):
+    codi = int(codi)
     # Use cached_calendars directory
     name_words = [n.strip().lower() for n in name.split(' ')]
     try:
-        os_files = [f for f in os.listdir(CACHED_CALENDARS_DIR) if f.startswith('prof_') and f.endswith('.data')]
+        os_files = [f for f in os.listdir(CACHED_CALENDARS_DIR) if f.startswith(f'prof_{codi}_') and f.endswith('.data')]
     except FileNotFoundError:
         os_files = []
     fname = next((f for f in os_files if all(n in f.lower() for n in name_words)), None)
@@ -696,29 +797,31 @@ def llegeix_fitxer_calendari(name):
             eprint('Loaded data for professor:', professor)
     else:
         print('No s\'ha trobat cap professor/a amb el nom especificat.\n')
-        n, fullname = find_professor_number(name)
+        n, fullname = find_professor_number(name, codi)
         if n is None:
             return None, None, None
         else:
-            ans = build_database(fullname)
+            ans = build_database(fullname, codi)
             if len(ans) > 0:
                 return ans[0]
             else:
                 return None, None, None
     return professor, llista_assignatures, calendari
 
-def fes_web_calendari(name, include_holidays=True, block_list=None):
+def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     if '/' in name:
         centre, codi = name.split('/', 1)
         return fes_web_assignatura(centre, codi, include_holidays=include_holidays)
 
-    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name)
+    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name, codi)
     if professor is None:
         return
 
     # Write feed generating url in a box, with a copy to clipboard button
     name_safe = quote(name)    
-    feed_url = f'https://mat.uab.cat/~masdeu/teaching/misc/calendari_professor.php?nom={name_safe}&holidays={str(include_holidays).lower()}&feed=true'
+    feed_url = f'{BASE_URL}/calendari_professor.php?nom={name_safe}&codi={codi}&holidays={str(include_holidays).lower()}&feed=true'
+
+    print(f'Professor/a trobat: {professor}', end='<br><br>\n')
 
     # Render feed URL box with a checkbox to toggle inclusion of holidays
     print('''
@@ -728,7 +831,10 @@ def fes_web_calendari(name, include_holidays=True, block_list=None):
     + '''
     <button id="copyFeedUrl">Copia</button><label style="margin-left:10px; font-weight:normal;">
         <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
-    Incloure dies no lectius</label>
+    Incloure dies no lectius</label><br>
+    <p>
+    <strong>Truc:</strong> Es pot afegir a la URL de més amunt el text <code>&block=12345,54321</code> per blocar les assignatures amb codi 12345 i 54321, per exemple.
+    </p>
     </div>
     <script>
     (function(){
@@ -762,14 +868,14 @@ def fes_web_calendari(name, include_holidays=True, block_list=None):
     ''')
     sys.stdout.flush()
     calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
-    print(f'Professor/a trobat: {professor}', end='<br>\n')
+
     imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None)
     sys.stdout.flush()
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
     return
 
-def main(name, out_ics=True, out_html=True, outfile='calendari', include_holidays=True, block_list=None):
-    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name)
+def main(name, codi=402, out_ics=True, out_html=True, outfile='calendari', include_holidays=True, block_list=None):
+    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name, codi)
     if professor is None:
         return
     calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
