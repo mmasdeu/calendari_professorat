@@ -9,7 +9,18 @@ import sys, os, re, base64, fire
 from webbrowser import open as webbrowser_open
 from time import sleep
 from contextlib import nullcontext
-from datetime import date, timedelta
+from datetime import timedelta, datetime
+
+URL_TPD = "https://web01.uab.es:31501/pds/transparenciaPD/InicioTransparencia?entradaPublica=true&idioma=ca&pais=ES#"
+URL_HORARIS = "https://web01.uab.es:31501/pds/consultaPublica/look%5Bconpub%5DInicioPubHora?entradaPublica=true&idiomaPais=ca.ES"  # <-- set the page URL where the original script runs
+HOME = os.getenv('HOME')
+USER = 'masdeu'
+BASE_URL = f"https://mat.uab.cat/~{USER}/teaching/misc/"
+if 'home' not in HOME:
+    HOME = f'/home/{USER}'  # default fallback for use with things like /var/www
+BROWSER_PATH = HOME + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"  # <-- set the path to your Chromium browser executable
+CACHED_CALENDARS_DIR = HOME + '/cached_calendars'  # Directory to cache downloaded calendars
+LOG_FILE = CACHED_CALENDARS_DIR + '/logfile.txt'  # Log file path
 
 codi_departaments  = dict([   
 (402,"Departament de Matemàtiques"),
@@ -78,18 +89,15 @@ codi_departaments  = dict([
 
 departaments_dict = {nom : cod for cod, nom in codi_departaments.items()}
 
-URL_TPD = "https://web01.uab.es:31501/pds/transparenciaPD/InicioTransparencia?entradaPublica=true&idioma=ca&pais=ES#"
-URL_HORARIS = "https://web01.uab.es:31501/pds/consultaPublica/look%5Bconpub%5DInicioPubHora?entradaPublica=true&idiomaPais=ca.ES"  # <-- set the page URL where the original script runs
-HOME = os.getenv('HOME')
-USER = 'masdeu'
-BASE_URL = f"https://mat.uab.cat/~{USER}/teaching/misc/"
-if 'home' not in HOME:
-    HOME = f'/home/{USER}'  # default fallback for use with things like /var/www
-BROWSER_PATH = HOME + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"  # <-- set the path to your Chromium browser executable
-CACHED_CALENDARS_DIR = HOME + '/cached_calendars'  # Directory to cache downloaded calendars
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
+
+def write_log(message):
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    log_message = f'[{timestamp}] {message}\n'
+    with open(LOG_FILE, 'a') as log_file:
+        log_file.write(log_message)
 
 def carrega_assignatures(page, llista_assignatures):
     # Prepare the list of subjects
@@ -761,6 +769,7 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None):
             f.write(linia.replace('\t', tab) + end)
         f.write(sep)
 
+## Called from php when ?feed=true is in the URL parameters, to directly output the ICS feed
 def fes_feed(name, codi=402, include_holidays=True, block_list=None):
     professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name, codi)
     if professor is None:
@@ -768,12 +777,14 @@ def fes_feed(name, codi=402, include_holidays=True, block_list=None):
     calendar, _ = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
     # Generate ICS feed directly to stdout
     sys.stdout.buffer.write(calendar.to_ical())
+    write_log(f'Feed generat per "{name}" ({codi}) amb {len(llista_assignatures)} assignatures.')
     return
-
+## Called from php
 def fes_web_assignatura(centre, codi=402, include_holidays=True, block_list=None):
     assignatura = Assignatura(centre, codi)
     calendar, events_fullcalendar = genera_calendari([assignatura], include_holidays=include_holidays, block_list=block_list)
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
+    write_log(f'Web generada per assignatura {centre} {codi}.')
     return
 
 def llegeix_fitxer_calendari(name, codi):
@@ -796,7 +807,6 @@ def llegeix_fitxer_calendari(name, codi):
             calendari = Calendar.from_ical(f.read())
             eprint('Loaded data for professor:', professor)
     else:
-        print('No s\'ha trobat cap professor/a amb el nom especificat.\n')
         n, fullname = find_professor_number(name, codi)
         if n is None:
             return None, None, None
@@ -805,6 +815,7 @@ def llegeix_fitxer_calendari(name, codi):
             if len(ans) > 0:
                 return ans[0]
             else:
+                print("No s'ha trobat cap professor/a amb el nom especificat.\n")
                 return None, None, None
     return professor, llista_assignatures, calendari
 
@@ -872,6 +883,7 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None)
     sys.stdout.flush()
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
+    write_log(f'Web generada per a "{name}" ({codi}) block={block_list} amb {len(llista_assignatures)} assignatures.')
     return
 
 def main(name, codi=402, out_ics=True, out_html=True, outfile='calendari', include_holidays=True, block_list=None):

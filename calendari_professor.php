@@ -180,6 +180,9 @@ function run_python_code($code) {
   <title>Calendari del Professorat</title>
 </head>
 <body>
+  <?php if (!empty($resultat)): ?>
+      <?= $resultat ?>
+  <?php endif; ?>
   <?php if (!empty($nom)): ?>
     <div style="text-align: center; font-size: 1.2em; margin-bottom: 1em;">
       Calendari generat per: <strong><?= htmlspecialchars($nom) ?></strong>
@@ -205,9 +208,22 @@ function run_python_code($code) {
         <label><input type="checkbox" id="holidays" name="holidays" value="true" <?php echo $holidays_checked; ?>><small>Incloure festius i no lectius</small></label>
         <button type="submit" name="action" value="genera">Genera</button>
       </form>
+      <script>
+        $(document).ready(function() {
+          const checkResult = () => {
+            $.get(window.location.href, function(data) {
+              const newResult = $(data).find('#resultat').html();
+              if (newResult && newResult.trim() !== '') {
+                $('#resultat').html(newResult);
+              } else {
+                setTimeout(checkResult, 1000); // Check again after 1 second
+              }
+            });
+          };
+          checkResult();
+        });
+      </script>
   <?php endif; ?>
-  <?php if (!empty($resultat)): ?>
-     <?= $resultat ?>
-  <?php endif; ?>
+
 </body>
 </html>
