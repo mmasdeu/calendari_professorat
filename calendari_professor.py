@@ -12,15 +12,35 @@ from contextlib import nullcontext
 from datetime import timedelta, datetime
 
 URL_TPD = "https://web01.uab.es:31501/pds/transparenciaPD/InicioTransparencia?entradaPublica=true&idioma=ca&pais=ES#"
-URL_HORARIS = "https://web01.uab.es:31501/pds/consultaPublica/look%5Bconpub%5DInicioPubHora?entradaPublica=true&idiomaPais=ca.ES"  # <-- set the page URL where the original script runs
+URL_HORARIS = "https://web01.uab.es:31501/pds/consultaPublica/look%5Bconpub%5DInicioPubHora?entradaPublica=true&idiomaPais=ca.ES"  # <-- set the page URL where the original script runs to get the subjects and download the calendar
 HOME = os.getenv('HOME')
 USER = 'masdeu'
+# Set the academic year for constructing URLs to subject pages (for linking in the HTML output)
+# Get it from datetime.now() and assume that if we're in the first half of the year, the academic year is the previous year / current year, otherwise it's current year / next year
+CURS = datetime.now().year - 1 if datetime.now().month < 8 else datetime.now().year
+
 BASE_URL = f"https://mat.uab.cat/~{USER}/teaching/misc/"
 if 'home' not in HOME:
     HOME = f'/home/{USER}'  # default fallback for use with things like /var/www
 BROWSER_PATH = HOME + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"  # <-- set the path to your Chromium browser executable
 CACHED_CALENDARS_DIR = HOME + '/cached_calendars'  # Directory to cache downloaded calendars
 LOG_FILE = CACHED_CALENDARS_DIR + '/logfile.txt'  # Log file path
+
+centres_dict = dict([
+    ("Biociències", 113),
+    ("Ciències", 103),
+    ("Ciències de l'Educació", 111),
+    ("Ciències de la Comunicació", 105),
+    ("Ciències Polítiques i de Sociologia", 108),
+    ("Dret", 106),
+    ("Economia i Empresa", 114),
+    ("Filosofia i Lletres", 101),
+    ("Medicina", 102),
+    ("Veterinària", 107),
+    ("Enginyeria", 115),
+    ("Escola de Doctorat", 600),
+    ("Formació Permanent", 650)
+])
 
 codi_departaments  = dict([   
 (402,"Departament de Matemàtiques"),
@@ -88,7 +108,7 @@ codi_departaments  = dict([
 '''
 
 departaments_dict = {nom : cod for cod, nom in codi_departaments.items()}
-
+codi_centres = {cod : nom for nom, cod in centres_dict.items()}
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -556,7 +576,8 @@ def build_database(name, codi):
             except Exception as e:
                 eprint(f'Error obtenint assignatures del professor/a {fullname}: ', str(e))
                 sleep(1)
-        # Elimina assignatures que no es volen processar (per exemple, les pràctiques externes)
+        # Elimina assignatures que no es volen processar (per exemple, tesis doctorals *68000) o
+        # les pràctiques externes (acabades en 69)
         assignatures = [a for a in assignatures if a.codi not in ['68000'] and a.codi[:2] != '69']
         eprint('Processant professor', professor, 'amb', len(assignatures), 'assignatures...', end=' ')
         sys.stderr.flush()
@@ -763,7 +784,12 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None):
         # f.write(f'Centre/Codi{tab}Nom de l\'assignatura{tab}(Període), grups' + end)
         f.write(sep)
         for (centre, codi, periode), assignatures in dict_assignatures.items():
-            linia = f'{centre}/{codi}\t{assignatures[0].nom_curt()}\t({periode}), '
+            if html:
+                url_assignatura = f"https://guies.uab.cat/guies_docents/public/portal/html/{CURS}/assignatura/{codi}/ca"
+                text_codi = f'<a href="{url_assignatura}"><b>{centre}</b> ({codi_centres.get(int(centre), "?")}) / <b>{codi}</b></a>'
+            else:
+                text_codi = f'{centre} ({codi_centres.get(int(centre), "?")}) / {codi}'
+            linia = f'{text_codi}\t{assignatures[0].nom_curt()}\t({periode}), '
             grups = ', '.join(sorted(set(a.grup for a in assignatures)))
             linia += grups
             f.write(linia.replace('\t', tab) + end)
@@ -809,14 +835,14 @@ def llegeix_fitxer_calendari(name, codi):
     else:
         n, fullname = find_professor_number(name, codi)
         if n is None:
-            return None, None, None
+            return None, [None], None
         else:
             ans = build_database(fullname, codi)
             if len(ans) > 0:
                 return ans[0]
             else:
                 print("No s'ha trobat cap professor/a amb el nom especificat.\n")
-                return None, None, None
+                return None, [None], None
     return professor, llista_assignatures, calendari
 
 def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
@@ -824,15 +850,28 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
         centre, codi = name.split('/', 1)
         return fes_web_assignatura(centre, codi, include_holidays=include_holidays)
 
-    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name, codi)
-    if professor is None:
+    llista_assignatures = []
+    calendari = Calendar()
+    professor_list = []
+    event_hashes = []
+    for n in name.split(';'):
+        professor, assignatures, calendari_nou = llegeix_fitxer_calendari(n.strip(), codi)
+        professor_list.append(professor)
+        llista_assignatures.extend(assignatures)
+        if calendari_nou is not None:
+            # Merge events from calendari_nou into calendari
+            for event in calendari_nou.events:
+                if str(event) not in event_hashes: # DEBUG: does not work as intended, duplicate events appear
+                    event_hashes.append(str(event))
+                    calendari.add_component(event)
+    if all(o is None for o in professor_list):
         return
 
     # Write feed generating url in a box, with a copy to clipboard button
     name_safe = quote(name)    
     feed_url = f'{BASE_URL}/calendari_professor.php?nom={name_safe}&codi={codi}&holidays={str(include_holidays).lower()}&feed=true'
 
-    print(f'Professor/a trobat: {professor}', end='<br><br>\n')
+    print(f'Professorat trobat: {professor_list}', end='<br><br>\n')
 
     # Render feed URL box with a checkbox to toggle inclusion of holidays
     print('''
@@ -877,11 +916,9 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     })();
     </script>
     ''')
-    sys.stdout.flush()
-    calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
 
+    calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
     imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None)
-    sys.stdout.flush()
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
     write_log(f'Web generada per a "{name}" ({codi}) block={block_list} amb {len(llista_assignatures)} assignatures.')
     return

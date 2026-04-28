@@ -169,6 +169,25 @@ function run_python_code($code) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
+		<link rel="shortcut icon" href="https://www.uab.cat/Xcelerate/WAI/img/simbol.png?v=4.0.0" />
+    <link rel="preload" href="https://mat.uab.cat/~masdeu/teaching/misc/MonaSans-Black.woff2" as="Mona Sans" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="https://www.uab.cat/Xcelerate/WAI/css/sites/departament.css?v=4.0.0" />
+    <link rel="stylesheet" href="https://www.uab.cat/Xcelerate/WAI/css/vendor/owl/owl.carousel.min.css?v=4.0.0" />
+    <noscript>
+    <link rel="stylesheet" href="https://www.uab.cat/Xcelerate/WAI/css/noscript.css?v=4.0.0" />
+    </noscript>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+		<meta property="og:title" content="Departament de Matemàtiques" />
+		<meta property="og:description" content="Portada" />
+		<meta property="og:site_name" content="UAB Barcelona" />
+		<meta property="og:image" content="https://www.uab.cat/ca/uab/img/universitat-autonoma-barcelona/logo-xxss.png" />
+		<meta property="og:url" content='https://mat.uab.cat/calendari_professorat/'  />
+		<meta name="description" content="Portada" />
+		<meta name="author" content="UAB - Marc Masdeu" />
+		<meta name="robots" content='index, follow' />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+	
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.css">
   <link rel="stylesheet" href="calendari_style.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.js"></script>
@@ -194,7 +213,7 @@ function run_python_code($code) {
       ?>
       <h2>Calendari del Professorat</h2>
       <form method="POST" action="#resultat">
-        <label><small>Nom professor/a o codi assignatura:</small><input type="text" size=50 name="nom" id="nom" placeholder="Carl Friedrich Gauss o 103/100088" required></label>
+        <label><small>Nom professor/a o codi assignatura:</small><input type="text" size=50 name="nom" id="nom" placeholder="Carl Friedrich Gauss;Leonard Euler o 103/100088" required></label>
         <label>
           <small>Departament:</small>
           <select name="departament" id="departament">
