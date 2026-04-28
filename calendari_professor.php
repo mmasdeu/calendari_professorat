@@ -203,7 +203,7 @@ function run_python_code($code) {
       <?= $resultat ?>
   <?php endif; ?>
   <?php if (!empty($nom)): ?>
-    <div style="text-align: center; font-size: 1.2em; margin-bottom: 1em;">
+    <div class="generated-by">
       Calendari generat per: <strong><?= htmlspecialchars($nom) ?></strong>
     </div>
   <?php else: ?>
@@ -243,6 +243,10 @@ function run_python_code($code) {
         });
       </script>
   <?php endif; ?>
+
+  <footer class="site-footer">
+    <p>Copyright &copy; <?= date('Y') ?> Marc Masdeu. Tots els drets reservats.</p>
+  </footer>
 
 </body>
 </html>
