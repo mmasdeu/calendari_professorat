@@ -76,6 +76,11 @@ if (isset($_REQUEST['departament'])) {
   if (array_key_exists($requested_departament, $departaments)) {
     $departament = $requested_departament;
   }
+} elseif (isset($_REQUEST['codi'])) {
+  $requested_departament = (int)$_REQUEST['codi'];
+  if (array_key_exists($requested_departament, $departaments)) {
+    $departament = $requested_departament;
+  }
 }
 
 function build_block_list_arg($raw_block) {
@@ -199,13 +204,14 @@ function run_python_code($code) {
   <title>Calendari del Professorat</title>
 </head>
 <body>
+  <?php if (!empty($nom)): ?>
+  <div class="generated-by">
+      Calendari generat per: <strong><?= htmlspecialchars($nom) ?></strong>
+  </div>
   <?php if (!empty($resultat)): ?>
       <?= $resultat ?>
   <?php endif; ?>
-  <?php if (!empty($nom)): ?>
-    <div class="generated-by">
-      Calendari generat per: <strong><?= htmlspecialchars($nom) ?></strong>
-    </div>
+
   <?php else: ?>
       <?php
         // Preserve holidays checkbox state across submissions; default to checked

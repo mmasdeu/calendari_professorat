@@ -411,6 +411,19 @@ def save_ics(calendar, outfile=None):
         with open(outfile + '.ics', "wb") if outfile else nullcontext(sys.stdout) as f:
             f.write(calendar.to_ical())
 
+def normalize_block_list(block_list):
+    if block_list is None:
+        return []
+    if isinstance(block_list, (int, str)):
+        block_list = [block_list]
+    normalized = []
+    for item in block_list:
+        for part in str(item).split(','):
+            code = part.strip()
+            if code and code not in normalized:
+                normalized.append(code)
+    return normalized
+
 def imprimeix_html(events, ics_string, outfile=None, standalone=None):
     ics_string = ics_string.decode('utf-8').replace('\r\n', '\n').strip()
     if standalone is None:
@@ -712,11 +725,7 @@ def descarrega_calendari(llista_assignatures):
 
 def genera_calendari(llista_assignatures, include_holidays=True, calendari=None, block_list=None):
     # Process events and keep only those corresponding to our subjects
-    if block_list is None:
-        block_list = []
-    elif isinstance(block_list, (str, int)):
-        block_list = [str(block_list)]
-    block_list = [str(o) for o in block_list]
+    block_list = normalize_block_list(block_list)
     newcal = Calendar()
     events_fullcalendar = []
     if calendari is None:
@@ -768,7 +777,8 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
             events_fullcalendar.append((data, str(start.dt), str(end.dt), '#808080', True))
     return newcal, events_fullcalendar
 
-def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None):
+def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=None):
+    blocked_codes = set(normalize_block_list(blocked_codes))
     if html:
         end = '<br>'
         sep = '<hr>'
@@ -787,9 +797,13 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None):
             if html:
                 url_assignatura = f"https://guies.uab.cat/guies_docents/public/portal/html/{CURS}/assignatura/{codi}/ca"
                 text_codi = f'<a href="{url_assignatura}"><b>{centre}</b> ({codi_centres.get(int(centre), "?")}) / <b>{codi}</b></a>'
+                blocked_class = ' is-blocked' if str(codi) in blocked_codes else ''
+                course_name = assignatures[0].nom_curt().strip()
+                text_nom = f'<button type="button" class="block-course-label{blocked_class}" data-course-code="{codi}" aria-pressed="{"true" if str(codi) in blocked_codes else "false"}">{course_name}</button>'
             else:
                 text_codi = f'{centre} ({codi_centres.get(int(centre), "?")}) / {codi}'
-            linia = f'{text_codi}\t{assignatures[0].nom_curt()}\t({periode}), '
+                text_nom = assignatures[0].nom_curt()
+            linia = f'{text_codi}\t{text_nom}\t({periode}), '
             grups = ', '.join(sorted(set(a.grup for a in assignatures)))
             linia += grups
             f.write(linia.replace('\t', tab) + end)
@@ -867,45 +881,98 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     if all(o is None for o in professor_list):
         return
 
-    # Write feed generating url in a box, with a copy to clipboard button
-    name_safe = quote(name)    
-    feed_url = f'{BASE_URL}/calendari_professorat?nom={name_safe}&codi={codi}&holidays={str(include_holidays).lower()}&feed=true'
+    blocked_codes = normalize_block_list(block_list)
+    blocked_codes_js = '[' + ','.join(f'"{code}"' for code in blocked_codes) + ']'
 
-    print(f'Professorat trobat: {professor_list}', end='<br><br>\n')
+    print(f'Professorat trobat: {str(professor_list)[1:-1]}', end='<br><br>\n')
+
+
+    imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=blocked_codes)
+
+
+    calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=blocked_codes)
+
+    imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
+
+    # Write feed generating url in a box, with a copy to clipboard button
+    name_safe = quote(name)
+    feed_url = f'{BASE_URL}/calendari_professorat?nom={name_safe}&departament={codi}&holidays={str(include_holidays).lower()}&feed=true'
+    if blocked_codes:
+        feed_url += '&block=' + ','.join(blocked_codes)
 
     # Render feed URL box with a checkbox to toggle inclusion of holidays
     print('''
+    <style>
+    .block-course-label {
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+        text-align: left;
+    }
+    .block-course-label:hover {
+        text-decoration: underline;
+    }
+    .block-course-label.is-blocked {
+        color: #666;
+        text-decoration: line-through;
+    }
+    </style>
     <div style="margin-bottom: 10px;">
     URL del feed iCal:<br>
-    <input type="text" id="feedUrl" value="''' + feed_url + '" readonly>'\
-    + '''
+    <input type="text" id="feedUrl" value="''' + feed_url + '" readonly data-name="''' + name_safe + '''" data-departament="''' + str(codi) + '''">
     <button id="copyFeedUrl">Copia</button><label style="margin-left:10px; font-weight:normal;">
         <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
     Incloure dies no lectius</label><br>
-    <p>
-    <strong>Truc:</strong> Es pot afegir a la URL de més amunt el text <code>&block=12345,54321</code> per blocar les assignatures amb codi 12345 i 54321, per exemple.
-    </p>
     </div>
+    ''')
+
+    print('''
     <script>
     (function(){
         var feedInput = document.getElementById("feedUrl");
         var checkbox = document.getElementById("includeHolidays");
         var copyBtn = document.getElementById("copyFeedUrl");
+        var blockedCodes = ''' + blocked_codes_js + ''';
+        var courseLabels = Array.prototype.slice.call(document.querySelectorAll('.block-course-label'));
 
-        function updateFeedUrl() {
-            var url = feedInput.value;
-            // Replace existing holidays parameter if present, otherwise append it
-            if (url.indexOf("&holidays=") >= 0) {
-                url = url.replace(/(&holidays=)(true|false)/, '$1' + (checkbox.checked ? 'true' : 'false'));
-            } else if (url.indexOf("?") >= 0) {
-                url = url + '&holidays=' + (checkbox.checked ? 'true' : 'false');
-            } else {
-                url = url + '?holidays=' + (checkbox.checked ? 'true' : 'false');
+        function buildUrl(includeFeed) {
+            var url = new URL(window.location.origin + window.location.pathname);
+            var currentBlocked = courseLabels.filter(function(label) { return label.classList.contains('is-blocked'); }).map(function(label) { return label.getAttribute('data-course-code'); });
+            url.searchParams.set('nom', decodeURIComponent(feedInput.getAttribute('data-name')));
+            url.searchParams.set('departament', feedInput.getAttribute('data-departament'));
+            url.searchParams.set('holidays', checkbox.checked ? 'true' : 'false');
+            if (includeFeed) {
+                url.searchParams.set('feed', 'true');
             }
-            feedInput.value = url;
+            if (currentBlocked.length > 0) {
+                url.searchParams.set('block', currentBlocked.join(','));
+            } else {
+                url.searchParams.delete('block');
+            }
+            return url;
         }
 
+        function updateFeedUrl() {
+            feedInput.value = buildUrl(true).toString();
+        }
+
+        courseLabels.forEach(function(label) {
+            if (blockedCodes.indexOf(label.getAttribute('data-course-code')) >= 0) {
+                label.classList.add('is-blocked');
+                label.setAttribute('aria-pressed', 'true');
+            }
+            label.addEventListener('click', function() {
+                var isBlocked = label.classList.toggle('is-blocked');
+                label.setAttribute('aria-pressed', isBlocked ? 'true' : 'false');
+                updateFeedUrl();
+                window.location.assign(buildUrl(false).toString());
+            });
+        });
         checkbox.addEventListener('change', updateFeedUrl);
+        updateFeedUrl();
 
         copyBtn.addEventListener("click", function() {
             feedInput.select();
@@ -916,10 +983,6 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     })();
     </script>
     ''')
-
-    calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
-    imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None)
-    imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
     write_log(f'Web generada per a "{name}" ({codi}) block={block_list} amb {len(llista_assignatures)} assignatures.')
     return
 
@@ -928,7 +991,7 @@ def main(name, codi=402, out_ics=True, out_html=True, outfile='calendari', inclu
     if professor is None:
         return
     calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
-    print(f'Professor/a trobat: {professor}')
+    print(f'Professorat trobat: {professor}')
     imprimeix_llista_assignatures(llista_assignatures, html=False, outfile=None)
     if out_ics:
         save_ics(calendar, outfile)
