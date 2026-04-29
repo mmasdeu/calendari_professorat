@@ -100,7 +100,7 @@ if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
     $output = run_python_code($python_code);
     if ($output['success']) {
         header('Content-Type: text/calendar; charset=utf-8');
-        header('Content-Disposition: inline; filename="calendari_professor.ics"');
+        header('Content-Disposition: inline; filename="calendari_professorat.ics"');
         echo $output['stdout'];
         exit;
     } else {
@@ -182,14 +182,14 @@ function run_python_code($code) {
 		<meta property="og:description" content="Portada" />
 		<meta property="og:site_name" content="UAB Barcelona" />
 		<meta property="og:image" content="https://www.uab.cat/ca/uab/img/universitat-autonoma-barcelona/logo-xxss.png" />
-		<meta property="og:url" content='https://mat.uab.cat/calendari_professorat/'  />
+		<meta property="og:url" content='https://mat.uab.cat/calendari_professorat'  />
 		<meta name="description" content="Portada" />
 		<meta name="author" content="UAB - Marc Masdeu" />
 		<meta name="robots" content='index, follow' />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 	
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.css">
-  <link rel="stylesheet" href="calendari_style.css">
+  <link rel="stylesheet" href="https://mat.uab.cat/~masdeu/teaching/misc/calendari_style.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/locales-all.min.js"></script>
   <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js'></script>

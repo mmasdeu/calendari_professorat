@@ -19,7 +19,7 @@ USER = 'masdeu'
 # Get it from datetime.now() and assume that if we're in the first half of the year, the academic year is the previous year / current year, otherwise it's current year / next year
 CURS = datetime.now().year - 1 if datetime.now().month < 8 else datetime.now().year
 
-BASE_URL = f"https://mat.uab.cat/~{USER}/teaching/misc/"
+BASE_URL = f"https://mat.uab.cat"
 if 'home' not in HOME:
     HOME = f'/home/{USER}'  # default fallback for use with things like /var/www
 BROWSER_PATH = HOME + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"  # <-- set the path to your Chromium browser executable
@@ -31,7 +31,7 @@ centres_dict = dict([
     ("Ciències", 103),
     ("Ciències de l'Educació", 111),
     ("Ciències de la Comunicació", 105),
-    ("Ciències Polítiques i de Sociologia", 108),
+    ("Ciències Polítiques i Sociologia", 108),
     ("Dret", 106),
     ("Economia i Empresa", 114),
     ("Filosofia i Lletres", 101),
@@ -43,13 +43,13 @@ centres_dict = dict([
 ])
 
 codi_departaments  = dict([   
-(402,"Departament de Matemàtiques"),
-(403,"Departament de Química"),
-(404,"Departament de Física"),
-(405,"Departament de Geologia"),
-(406,"Departament de Bioquímica i de Biologia Molecular"),
-(407,"Departament de Biologia Animal, de Biologia Vegetal i d'Ecologia"),
-(409,"Departament de Genètica i de Microbiologia"),
+(402,"Matemàtiques"),
+(403,"Química"),
+(404,"Física"),
+(405,"Geologia"),
+(406,"Bioquímica i Biologia Molecular"),
+(407,"Biologia Animal, Biologia Vegetal i Ecologia"),
+(409,"Genètica i Microbiologia"),
 ])
 
 '''
@@ -419,7 +419,7 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
         if standalone:
             f.write('<html><head>\
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.css">\
-            <link rel="stylesheet" href="calendari_style.css">\
+            <link rel="stylesheet" href="https://mat.uab.cat/~masdeu/teaching/misc/calendari_style.css">\
             <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.js"></script>\
             <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/locales-all.min.js"></script>\
             <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js"></script>\
@@ -869,7 +869,7 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
 
     # Write feed generating url in a box, with a copy to clipboard button
     name_safe = quote(name)    
-    feed_url = f'{BASE_URL}/calendari_professor.php?nom={name_safe}&codi={codi}&holidays={str(include_holidays).lower()}&feed=true'
+    feed_url = f'{BASE_URL}/calendari_professorat?nom={name_safe}&codi={codi}&holidays={str(include_holidays).lower()}&feed=true'
 
     print(f'Professorat trobat: {professor_list}', end='<br><br>\n')
 
