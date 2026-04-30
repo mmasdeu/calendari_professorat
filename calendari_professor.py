@@ -431,11 +431,10 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
     with open(outfile + '.html', 'w') if outfile else nullcontext(sys.stdout) as f:
         if standalone:
             f.write('<html><head>\
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.css">\
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.css">\
             <link rel="stylesheet" href="https://mat.uab.cat/~masdeu/teaching/misc/calendari_style.css">\
-            <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.js"></script>\
-            <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/locales-all.min.js"></script>\
             <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js"></script>\
+            <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/locales-all.min.js"></script>\
             <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>\
             </head><body>\n')
         f.write('<button id="icaldownload" style="float: right; margin-bottom: 10px;">Descarrega</button>\n')
@@ -474,6 +473,11 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
                         center: 'title',
                         right: 'timeGridWeek,listMonth'
                     },
+                                        buttonText: {
+                                                today: 'avui',
+                                                week: 'setmana',
+                                                list: 'llista'
+                                        },
                       titleFormat: { // will produce something like "Tuesday, September 18, 2018"
                         month: 'numeric',
                         year: 'numeric',
@@ -792,14 +796,17 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, 
         dict_assignatures[(a.centre, a.codi, a.periode)].append(a)
     with open(outfile + '.html', 'w') if outfile else nullcontext(sys.stdout) as f:
         # f.write(f'Centre/Codi{tab}Nom de l\'assignatura{tab}(Període), grups' + end)
-        f.write(sep)
+        if html:
+            f.write('<h3>Assignatures</h3>')
+        else:
+            f.write(sep)
         for (centre, codi, periode), assignatures in dict_assignatures.items():
             if html:
                 url_assignatura = f"https://guies.uab.cat/guies_docents/public/portal/html/{CURS}/assignatura/{codi}/ca"
                 text_codi = f'<a href="{url_assignatura}"><b>{centre}</b> ({codi_centres.get(int(centre), "?")}) / <b>{codi}</b></a>'
                 blocked_class = ' is-blocked' if str(codi) in blocked_codes else ''
                 course_name = assignatures[0].nom_curt().strip()
-                text_nom = f'<button type="button" class="block-course-label{blocked_class}" data-course-code="{codi}" aria-pressed="{"true" if str(codi) in blocked_codes else "false"}">{course_name}</button>'
+                text_nom = f'<button type="button" class="block-course-label{blocked_class}" data-course-code="{codi}" aria-pressed="{"true" if str(codi) in blocked_codes else "false"}" title="Clica per bloquejar/desbloquejar">{course_name}</button>'
             else:
                 text_codi = f'{centre} ({codi_centres.get(int(centre), "?")}) / {codi}'
                 text_nom = assignatures[0].nom_curt()
@@ -889,6 +896,10 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
 
     imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=blocked_codes)
 
+    print('''
+    <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
+    Incloure festius i no lectius</label><br>'''
+    )
 
     calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=blocked_codes)
 
@@ -924,8 +935,6 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     URL del feed iCal:<br>
     <input type="text" id="feedUrl" value="''' + feed_url + '" readonly data-name="''' + name_safe + '''" data-departament="''' + str(codi) + '''">
     <button id="copyFeedUrl">Copia</button><label style="margin-left:10px; font-weight:normal;">
-        <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
-    Incloure dies no lectius</label><br>
     </div>
     ''')
 
@@ -971,7 +980,10 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
                 window.location.assign(buildUrl(false).toString());
             });
         });
-        checkbox.addEventListener('change', updateFeedUrl);
+        checkbox.addEventListener('change',function() {
+                updateFeedUrl();
+                window.location.assign(buildUrl(false).toString());
+            });
         updateFeedUrl();
 
         copyBtn.addEventListener("click", function() {

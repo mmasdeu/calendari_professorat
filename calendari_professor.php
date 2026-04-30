@@ -115,9 +115,9 @@ if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
 }
 // Prefer GET (non-feed) over POST; handle form POST otherwise
 elseif (isset($_GET['nom'])) {
-  handle_nom_request($_GET['nom'], $departament, $_GET['holidays'] ?? null);
+  handle_nom_request($_GET['nom'], $departament, $_GET['holidays'] ?? 'true');
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nom'])) {
-  handle_nom_request($_POST['nom'], $_POST['departament'], $_POST['holidays'] ?? null);
+  handle_nom_request($_POST['nom'], $_POST['departament'], $_POST['holidays'] ?? 'true');
 }
 
 // Unified request handling for GET/POST 'nom' (excluding feed handling above)
@@ -195,9 +195,8 @@ function run_python_code($code) {
 	
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.css">
   <link rel="stylesheet" href="https://mat.uab.cat/~masdeu/teaching/misc/calendari_style.css">
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/main.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/locales-all.min.js"></script>
   <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js'></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/locales-all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -205,18 +204,10 @@ function run_python_code($code) {
 </head>
 <body>
   <?php if (!empty($nom)): ?>
-  <div class="generated-by">
-      Calendari generat per: <strong><?= htmlspecialchars($nom) ?></strong>
-  </div>
-  <?php if (!empty($resultat)): ?>
-      <?= $resultat ?>
-  <?php endif; ?>
-
+    <?php if (!empty($resultat)): ?>
+        <?= $resultat ?>
+    <?php endif; ?>
   <?php else: ?>
-      <?php
-        // Preserve holidays checkbox state across submissions; default to checked
-        $holidays_checked = isset($_REQUEST['holidays']) ? (($_REQUEST['holidays'] === 'true') ? 'checked' : '') : 'checked';
-      ?>
       <h2>Calendari del Professorat</h2>
       <form method="POST" action="#resultat">
         <label><small>Nom professor/a o codi assignatura:</small><input type="text" size=50 name="nom" id="nom" placeholder="Carl Friedrich Gauss;Leonard Euler o 103/100088" required></label>
@@ -230,7 +221,6 @@ function run_python_code($code) {
             <?php endforeach; ?>
           </select>
         </label>
-        <label><input type="checkbox" id="holidays" name="holidays" value="true" <?php echo $holidays_checked; ?>><small>Incloure festius i no lectius</small></label>
         <button type="submit" name="action" value="genera">Genera</button>
       </form>
       <script>
@@ -241,7 +231,7 @@ function run_python_code($code) {
               if (newResult && newResult.trim() !== '') {
                 $('#resultat').html(newResult);
               } else {
-                setTimeout(checkResult, 1000); // Check again after 1 second
+                setTimeout(checkResult, 250); // Check again after 250 ms
               }
             });
           };
