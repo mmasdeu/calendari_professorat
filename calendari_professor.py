@@ -737,6 +737,7 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
     if calendari is None:
         eprint('Error: No s\'ha pogut descarregar el calendari.')
         return newcal, events_fullcalendar
+    seen_events = set()
     for event in calendari.events:
         data = str(event.get('SUMMARY'))
         lloc = str(event.get('LOCATION')).replace('Aula de docència', '').replace('d`', '').strip(' - ').strip()
@@ -744,6 +745,13 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
             lloc = '** aula no assignada **'
         start = event.get('DTSTART')
         end = event.get('DTEND')
+
+        # Skip if event is duplicate (same summary, location, start, end)
+        event_id = (data, lloc, start, end)
+        if event_id in seen_events:
+            continue
+        seen_events.add(event_id)
+
         # Extract code, name, group, type using regex: 100088 - Àlgebra Lineal Grup: 2 - Pràctiques d'Aula
         match = re.match(r'(\d+)\s*-\s*(.*?)\s*Grup:\s*(\d+)\s*-\s*(.*)', data)
         if match:
@@ -778,7 +786,6 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
             event.add('DTSTAMP', event.get('DTSTAMP') if event.get('DTSTAMP') else vDatetime(start.dt))
             event.add('UID', str(uuid4()) + '@mat.uab.cat')
             newcal.add_component(event) # Add non-lecture days to the ICS
-            events_fullcalendar.append((data, str(start.dt), str(end.dt), '#808080', True))
     return newcal, events_fullcalendar
 
 def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=None):
@@ -874,17 +881,17 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     llista_assignatures = []
     calendari = Calendar()
     professor_list = []
-    event_hashes = []
     for n in name.split(';'):
         professor, assignatures, calendari_nou = llegeix_fitxer_calendari(n.strip(), codi)
         professor_list.append(professor)
-        llista_assignatures.extend(assignatures)
+        for a in assignatures:
+            if a not in llista_assignatures:
+                llista_assignatures.append(a)
+        # llista_assignatures.extend(assignatures)
         if calendari_nou is not None:
             # Merge events from calendari_nou into calendari
             for event in calendari_nou.events:
-                if str(event) not in event_hashes: # DEBUG: does not work as intended, duplicate events appear
-                    event_hashes.append(str(event))
-                    calendari.add_component(event)
+                calendari.add_component(event)
     if all(o is None for o in professor_list):
         return
 
@@ -901,8 +908,11 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     Incloure festius i no lectius</label><br>'''
     )
 
-    calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=blocked_codes)
-
+    calendar, events_fullcalendar = genera_calendari(llista_assignatures,
+                                                     include_holidays=include_holidays,
+                                                     calendari=calendari,
+                                                     block_list=blocked_codes)
+  
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
 
     # Write feed generating url in a box, with a copy to clipboard button
