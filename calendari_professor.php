@@ -99,7 +99,7 @@ if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
     // Return an iCal feed directly by invoking the Python module to emit ICS to stdout
     $nom = $_GET['nom'];
     $block_list_arg = build_block_list_arg($_GET['block'] ?? null);
-    
+
     $safe_nom = escapeshellarg($nom);
     $python_code = "calendari_professor.py fes_feed --name=" . $safe_nom . " --codi=" . $departament . $block_list_arg;
     $output = run_python_code($python_code);
@@ -210,7 +210,7 @@ function run_python_code($code) {
   <?php else: ?>
       <h2>Calendari del Professorat</h2>
       <form method="POST" action="#resultat">
-        <label><small>Nom professor/a o codi assignatura:</small><input type="text" size=50 name="nom" id="nom" placeholder="Carl Friedrich Gauss;Leonard Euler o 103/100088" required></label>
+        <label><small>Nom professor/a o codi assignatura:</small><input type="text" size=50 name="nom" id="nom" placeholder="Marie-Sophie Germain;Carl Friedrich Gauss o 103/100088" required></label>
         <label>
           <small>Departament:</small>
           <select name="departament" id="departament">

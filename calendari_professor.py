@@ -10,6 +10,7 @@ from webbrowser import open as webbrowser_open
 from time import sleep
 from contextlib import nullcontext
 from datetime import timedelta, datetime
+import unicodedata
 
 URL_TPD = "https://web01.uab.es:31501/pds/transparenciaPD/InicioTransparencia?entradaPublica=true&idioma=ca&pais=ES#"
 URL_HORARIS = "https://web01.uab.es:31501/pds/consultaPublica/look%5Bconpub%5DInicioPubHora?entradaPublica=true&idiomaPais=ca.ES"  # <-- set the page URL where the original script runs to get the subjects and download the calendar
@@ -857,10 +858,16 @@ def fes_web_assignatura(centre, codi=402, include_holidays=True, block_list=None
     write_log(f'Web generada per assignatura {centre} {codi}.')
     return
 
+def remove_accents(input_string):
+    # Normalize the string to decompose accented characters into their base characters and diacritics
+    nfkd_form = unicodedata.normalize('NFKD', input_string)
+    # Filter out the diacritics (characters with Unicode category 'Mn')
+    return ''.join([c for c in nfkd_form if not unicodedata.combining(c)])
+
 def llegeix_fitxer_calendari(name, codi):
     codi = int(codi)
     # Use cached_calendars directory
-    name_words = [n.strip().lower() for n in name.split(' ')]
+    name_words = [remove_accents(n.strip().lower()) for n in name.split(' ')]
     try:
         os_files = [f for f in os.listdir(CACHED_CALENDARS_DIR) if f.startswith(f'prof_{codi}_') and f.endswith('.data')]
     except FileNotFoundError:
