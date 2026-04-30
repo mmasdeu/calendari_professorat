@@ -516,7 +516,7 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
         eprint('Visita la pàgina', 'file://' + base_folder + '/' + outfile + '.html per veure el calendari.')
         # webbrowser_open('file://' + base_folder + '/' + outfile + '.html')
 
-def find_professor_number(name, codi):
+def find_professor(name, codi):
     codi = int(codi)
     departament = codi_departaments[codi]
     with sync_playwright() as p:
@@ -540,9 +540,9 @@ def find_professor_number(name, codi):
             if all(n.strip().lower() in professor.strip().lower() for n in name.split(' ')):
                 eprint(f'Professor/a "{professor}" trobat al número {i}.')
                 browser.close()
-                return i, professor
+                return professor
         browser.close()
-    return None, None
+    return None
 
 def build_database(name, codi):
     codi = int(codi)
@@ -600,7 +600,7 @@ def build_database(name, codi):
         eprint('Processant professor', professor, 'amb', len(assignatures), 'assignatures...', end=' ')
         sys.stderr.flush()
         if len(assignatures) > 0:
-            prof_str = professor.replace(' ', '_').replace('/', '_').replace(',', '_')
+            prof_str = professor.replace(' ', '_').replace('/', '_').replace(',', '_').replace('ñ', 'n').replace('Ñ', 'N')
             fname = f'{CACHED_CALENDARS_DIR}/prof_{codi}_{prof_str}.data'
             cal = descarrega_calendari(assignatures)
             if cal is None:
@@ -834,9 +834,10 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, 
             else:
                 text_codi = f'{centre} ({codi_centres.get(int(centre), "?")}) / {codi}'
                 text_nom = assignatures[0].nom_curt()
-            linia = f'{text_codi}\t{text_nom}\t({periode}), '
+            per = 'C1' if periode == 'C/1' else 'C2' if periode == 'C/2' else 'A'
+            linia = f'{text_codi}\t{text_nom} · {per} '
             grups = ', '.join(sorted(set(a.grup for a in assignatures)))
-            linia += grups
+            linia += f'({grups})'
             f.write(linia.replace('\t', tab) + end)
         f.write(sep)
 
@@ -884,8 +885,8 @@ def llegeix_fitxer_calendari(name, codi):
             calendari = Calendar.from_ical(f.read())
             eprint('Loaded data for professor:', professor)
     else:
-        n, fullname = find_professor_number(name, codi)
-        if n is None:
+        fullname = find_professor(name, codi)
+        if fullname is None:
             return None, [None], None
         else:
             ans = build_database(fullname, codi)
