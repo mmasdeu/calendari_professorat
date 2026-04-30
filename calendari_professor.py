@@ -738,6 +738,7 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
         eprint('Error: No s\'ha pogut descarregar el calendari.')
         return newcal, events_fullcalendar
     seen_events = set()
+    seen_holidays = set()
     for event in calendari.events:
         data = str(event.get('SUMMARY'))
         lloc = str(event.get('LOCATION')).replace('Aula de docència', '').replace('d`', '').strip(' - ').strip()
@@ -745,16 +746,15 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
             lloc = '** aula no assignada **'
         start = event.get('DTSTART')
         end = event.get('DTEND')
-
-        # Skip if event is duplicate (same summary, location, start, end)
-        event_id = (data, lloc, start, end)
-        if event_id in seen_events:
-            continue
-        seen_events.add(event_id)
-
         # Extract code, name, group, type using regex: 100088 - Àlgebra Lineal Grup: 2 - Pràctiques d'Aula
         match = re.match(r'(\d+)\s*-\s*(.*?)\s*Grup:\s*(\d+)\s*-\s*(.*)', data)
         if match:
+            # Skip if event is duplicate (same summary, location, start, end)
+            event_id = (data, lloc, start, end)
+            if event_id in seen_events:
+                continue
+            seen_events.add(event_id)
+
             codi, nom_assignatura, grup, tipus = match.groups()
             title = f'{codi} {nom_assignatura} ({t_abbrev(tipus)}/{grup}) ➤ {lloc}'
             if str(codi) not in block_list:
@@ -772,10 +772,14 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
                     events_fullcalendar.append((title, str(start.dt), str(end.dt), a.color(), False))
         elif include_holidays and start.dt.weekday() <= 4:  # Dies no lectius o similar
             data = data.replace(' - ','')
+
             event = Event()
             event['SUMMARY'] = data
             # If duration is longer than 9h, make it an all-day event
-            if (end.dt - start.dt) > timedelta(hours=9):
+            is_allday = 'dia' in data.lower() \
+                    or 'festiu' in data.lower() \
+                    or (end.dt - start.dt) > timedelta(hours=9)
+            if is_allday:
                 # Set event to be all-day
                 event.add('dtstart', vDate(start.dt))
                 # End one day later
@@ -783,9 +787,21 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
             else:
                 event.add('dtstart', vDatetime(start.dt))
                 event.add('dtend', vDatetime(end.dt))
-            event.add('DTSTAMP', event.get('DTSTAMP') if event.get('DTSTAMP') else vDatetime(start.dt))
+            event.add('DTSTAMP', vDatetime(start.dt))
             event.add('UID', str(uuid4()) + '@mat.uab.cat')
-            newcal.add_component(event) # Add non-lecture days to the ICS
+            # Skip if event is duplicate (same summary, location, start, end)
+            # if 'festiu' in data, look only at date, not time
+            if is_allday:
+                date = start.dt.date()
+                event_id = (data, date)
+            else:
+                event_id = (data, str(start.dt), str(end.dt))
+            if event_id in seen_holidays:
+                continue
+            else:
+                seen_holidays.add(event_id)
+                newcal.add_component(event) # Add non-lecture days to the ICS
+                events_fullcalendar.append((data, str(start.dt), str(end.dt), '#808080', is_allday))
     return newcal, events_fullcalendar
 
 def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=None):
