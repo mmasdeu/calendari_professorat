@@ -26,6 +26,7 @@ if 'home' not in HOME:
 BROWSER_PATH = HOME + "/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell"  # <-- set the path to your Chromium browser executable
 CACHED_CALENDARS_DIR = HOME + '/cached_calendars'  # Directory to cache downloaded calendars
 LOG_FILE = CACHED_CALENDARS_DIR + '/logfile.txt'  # Log file path
+EXCLUDED_GROUPS = ['PEXT','TFG', 'TFM']
 
 centres_dict = dict([
     ("Biociències", 113),
@@ -124,7 +125,7 @@ def carrega_assignatures(page, llista_assignatures):
     # Prepare the list of subjects
     llista_assignatures_new = []
     for a in llista_assignatures:
-        if 'PEXT' in a.grup:
+        if any(o in a.grup for o in EXCLUDED_GROUPS):
             continue
         if str(a.periode) == '-1':
             llista_assignatures_new.append(Assignatura(a.centre, a.codi, a.grup, 'A/0', a.nom))
@@ -399,13 +400,11 @@ def t_abbrev(tipus_full, grup=None):
         'Seminaris': 'SEM',
         'Examens': 'EX',
         'Examen': 'EX',
-        'Pràctiques Externes': 'PEXT'
+        'Pràctiques Externes': 'PEXT',
+        'Treball de Final de Grau': 'TFG'
     }
     tipus = tipus_abbrev.get(tipus_full, tipus_full)
-    if grup is None:
-        return tipus
-    else:
-        return tipus + '/' + grup
+    return tipus if grup is None else f'{tipus}/{grup}'
 
 def save_ics(calendar, outfile=None):
     # Save new calendar to file
@@ -596,7 +595,7 @@ def build_database(name, codi):
                 sleep(1)
         # Elimina assignatures que no es volen processar (per exemple, tesis doctorals *68000) o
         # les pràctiques externes (acabades en 69)
-        assignatures = [a for a in assignatures if a.codi not in ['68000'] and a.codi[:2] != '69']
+        assignatures = [a for a in assignatures if not any(g in a.grup for g in EXCLUDED_GROUPS) and a.codi not in ['68000'] and a.codi[:2] != '69']
         eprint('Processant professor', professor, 'amb', len(assignatures), 'assignatures...', end=' ')
         sys.stderr.flush()
         if len(assignatures) > 0:
