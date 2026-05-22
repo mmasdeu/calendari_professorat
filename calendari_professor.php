@@ -101,7 +101,7 @@ if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
     $block_list_arg = build_block_list_arg($_GET['block'] ?? null);
 
     $safe_nom = escapeshellarg($nom);
-    $python_code = "calendari_professor.py fes_feed --name=" . $safe_nom . " --codi=" . $departament . $block_list_arg;
+    $python_code = "calendari_professorat.py fes_feed --name=" . $safe_nom . " --codi=" . $departament . $block_list_arg;
     $output = run_python_code($python_code);
     if ($output['success']) {
         header('Content-Type: text/calendar; charset=utf-8');
@@ -137,7 +137,7 @@ function handle_nom_request($raw_nom, $departament, $holidays_option) {
   // Value for the python command (basic sanitization)
   $safe_nom = escapeshellarg($raw_nom);
   $block_list_arg = build_block_list_arg($_REQUEST['block'] ?? null);
-  $python_code = "calendari_professor.py fes_web_calendari --name=" . $safe_nom . " --codi=" . $departament . ($holidays_option === 'true' ? " --include_holidays=True" : " --include_holidays=False") . $block_list_arg;
+  $python_code = "calendari_professorat.py fes_web_calendari --name=" . $safe_nom . " --codi=" . $departament . ($holidays_option === 'true' ? " --include_holidays=True" : " --include_holidays=False") . $block_list_arg;
   $output = run_python_code($python_code);
   $resultat = $output['success'] ? $output['stdout'] : "Error: " . $output['stderr'];
 }
@@ -209,6 +209,7 @@ function run_python_code($code) {
     <?php endif; ?>
   <?php else: ?>
       <h2>Calendari del Professorat</h2>
+      <a href=https://mat.uab.cat/horaris target=_blank>Consulta els horaris per titulacions.</a><br><br>
       <form method="POST" action="#resultat">
         <label><small>Nom professor/a o codi assignatura:</small><input type="text" size=50 name="nom" id="nom" placeholder="Marie-Sophie Germain;Carl Friedrich Gauss o 103/100088" required></label>
         <label>

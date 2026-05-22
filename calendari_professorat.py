@@ -211,15 +211,19 @@ def extreu_assignatures_de_fitxa(fitxa):
     for bloc in fitxa.get('gruposDocencia', []):
         centre = str(bloc.get('codCentro', '-1'))
         for assignatura in bloc.get('list', []):
+            print(assignatura)
             codi = str(assignatura.get('codAsig', ''))
             nom = str(assignatura.get('desc', ''))
             for grup in assignatura.get('grupos', []):
                 desc_grup = str(grup.get('descGrupo') or '-1').strip()
+                
+                hores = float(grup.get('grupHoraAlum') or -1)
+                # print(hores)
                 tipus_periode = str(grup.get('tipoPeriodo') or '-1').strip()
                 valor_periode = str(grup.get('valorPeriodo') or '-1').strip()
                 periode = f'{tipus_periode}/{valor_periode}' if tipus_periode != '-1' and valor_periode != '-1' else '-1'
                 key = (centre, codi, desc_grup, periode)
-                if codi and key not in vistos:
+                if hores > 0 and codi and key not in vistos:
                     vistos.add(key)
                     resultat.append(Assignatura(centre, codi, desc_grup, periode, nom))
     return resultat
