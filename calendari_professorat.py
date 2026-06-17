@@ -17,7 +17,7 @@ from datetime import timedelta, datetime
 import unicodedata
 
 URL_GUIES_DOCENTS = "https://guies.uab.cat/guies_docents/public/portal/html/"
-URL_PDS = "https://web01.uab.es:31501/pds/"
+URL_PDS = "https://web02.uab.es:31501/pds/"
 URL_TPD = URL_PDS + "transparenciaPD/"
 URL_HORARIS = URL_PDS + "consultaPublica/look%5Bconpub%5DInicioPubHora?entradaPublica=true&idiomaPais=ca.ES"
 HOME = os.getenv('HOME')
@@ -648,7 +648,7 @@ def fes_feed(name, codi=402, include_holidays=True, block_list=None):
     sys.stdout.buffer.write(calendar.to_ical())
     write_log(f'Feed generat per "{name}" ({codi}) amb {len(llista_assignatures)} assignatures.')
     return
-## Called from php
+
 def fes_web_assignatura(centre, codi=402, include_holidays=True, block_list=None):
     assignatura = Assignatura(centre, codi)
     calendar, events_fullcalendar = genera_calendari([assignatura], include_holidays=include_holidays, block_list=block_list)
@@ -696,8 +696,13 @@ def llegeix_fitxer_calendari(name, codi):
 
 def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     if '/' in name:
-        centre, codi = name.split('/', 1)
-        return fes_web_assignatura(centre, codi, include_holidays=include_holidays)
+        assignatura_list = [Assignatura(centre, codi) for centre, codi in (n.split('/', 1) for n in name.replace(' ', '').split(';'))]
+        # centre, codi = name.split('/', 1)
+        # assignatura_list = [Assignatura(centre, codi)]
+        calendar, events_fullcalendar = genera_calendari(assignatura_list, include_holidays=include_holidays, block_list=block_list)
+        imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
+        write_log(f'Web generada per assignatura {name}.')
+        return
 
     llista_assignatures = []
     calendari = Calendar()
