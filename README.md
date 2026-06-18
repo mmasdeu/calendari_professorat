@@ -21,7 +21,6 @@ Paquets:
 - icalendar
 - fire
 
-
 ## Instal·lació ràpida
 
 1. Crear i activar un entorn virtual de Python.
@@ -52,7 +51,7 @@ python calendari_professorat.py fes_web_calendari --name="Nom Cognom;Altra Perso
 Generar feed ICS directe (stdout):
 
 ```
-python calendari_professorat.py fes_feed --name="Nom Cognom" --codi=402 --include_holidays=True
+python calendari_professorat.py fes_web_calendari --name="Nom Cognom" --codi=402 --include_holidays=True --feed=True
 ```
 
 Calendari per assignatura concreta (format centre/codi):
@@ -86,7 +85,7 @@ Flux principal:
 
 1. Usuari obre formulari web.
 2. PHP executa `fes_web_calendari` i incrusta l’HTML retornat.
-3. Si es demana `feed=true`, PHP executa `fes_feed` i retorna `content-type text/calendar`.
+3. Si es demana `feed=true`, PHP retorna `content-type text/calendar`.
 
 Paràmetres web rellevants:
 
@@ -165,4 +164,3 @@ Si la web no mostra resultats:
 - Revisa ruta de Python a [calendari_professor.php](calendari_professor.php).
 - Revisa permisos d’escriptura a la carpeta de cache.
 - Revisa sortida d’error del proc_open al PHP.
-
