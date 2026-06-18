@@ -101,7 +101,7 @@ if (isset($_GET['nom']) && isset($_GET['feed']) && $_GET['feed'] === 'true') {
     $block_list_arg = build_block_list_arg($_GET['block'] ?? null);
 
     $safe_nom = escapeshellarg($nom);
-    $python_code = "calendari_professorat.py fes_feed --name=" . $safe_nom . " --codi=" . $departament . $block_list_arg;
+    $python_code = "calendari_professorat.py fes_web_calendari --name=" . $safe_nom . " --codi=" . $departament . $block_list_arg . " --feed=True";
     $output = run_python_code($python_code);
     if ($output['success']) {
         header('Content-Type: text/calendar; charset=utf-8');

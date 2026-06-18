@@ -638,24 +638,6 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, 
             f.write(linia.replace('\t', tab) + end)
         f.write(sep)
 
-## Called from php when ?feed=true is in the URL parameters, to directly output the ICS feed
-def fes_feed(name, codi=402, include_holidays=True, block_list=None):
-    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name, codi)
-    if professor is None:
-        return
-    calendar, _ = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
-    # Generate ICS feed directly to stdout
-    sys.stdout.buffer.write(calendar.to_ical())
-    write_log(f'Feed generat per "{name}" ({codi}) amb {len(llista_assignatures)} assignatures.')
-    return
-
-def fes_web_assignatura(centre, codi=402, include_holidays=True, block_list=None):
-    assignatura = Assignatura(centre, codi)
-    calendar, events_fullcalendar = genera_calendari([assignatura], include_holidays=include_holidays, block_list=block_list)
-    imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
-    write_log(f'Web generada per assignatura {centre} {codi}.')
-    return
-
 def remove_accents(input_string):
     # Normalize the string to decompose accented characters into their base characters and diacritics
     nfkd_form = unicodedata.normalize('NFKD', input_string)
@@ -694,38 +676,45 @@ def llegeix_fitxer_calendari(name, codi):
                 return None, [None], None
     return professor, llista_assignatures, calendari
 
-def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
-    if '/' in name:
-        assignatura_list = [Assignatura(centre, codi) for centre, codi in (n.split('/', 1) for n in name.replace(' ', '').split(';'))]
-        # centre, codi = name.split('/', 1)
-        # assignatura_list = [Assignatura(centre, codi)]
-        calendar, events_fullcalendar = genera_calendari(assignatura_list, include_holidays=include_holidays, block_list=block_list)
-        imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
-        write_log(f'Web generada per assignatura {name}.')
-        return
-
-    llista_assignatures = []
-    calendari = Calendar()
-    professor_list = []
-    for n in name.split(';'):
-        professor, assignatures, calendari_nou = llegeix_fitxer_calendari(n.strip(), codi)
-        professor_list.append(professor)
-        for a in assignatures:
-            if a not in llista_assignatures:
-                llista_assignatures.append(a)
-        # llista_assignatures.extend(assignatures)
-        if calendari_nou is not None:
-            # Merge events from calendari_nou into calendari
-            for event in calendari_nou.events:
-                calendari.add_component(event)
-    if all(o is None for o in professor_list):
-        return
-
+def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None, feed=False):
     blocked_codes = normalize_block_list(block_list)
     blocked_codes_js = '[' + ','.join(f'"{code}"' for code in blocked_codes) + ']'
+    if '--' in name:
+        name = name.replace('--','++')
+    if '++' in name:
+        llista_assignatures = [Assignatura(n) for n in name.split(';')]
+        calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, block_list=block_list)
+    elif '/' in name:
+        llista_assignatures = [Assignatura(centre, codi) for centre, codi in (n.split('/', 1) for n in name.replace(' ', '').split(';'))]
+        calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, block_list=block_list)
+    else:
+        llista_assignatures = []
+        calendari = Calendar()
+        professor_list = []
+        for n in name.split(';'):
+            professor, assignatures, calendari_nou = llegeix_fitxer_calendari(n.strip(), codi)
+            professor_list.append(professor)
+            for a in assignatures:
+                if a not in llista_assignatures:
+                    llista_assignatures.append(a)
+            # llista_assignatures.extend(assignatures)
+            if calendari_nou is not None:
+                # Merge events from calendari_nou into calendari
+                for event in calendari_nou.events:
+                    calendari.add_component(event)
+        if all(o is None for o in professor_list):
+            return
+        print(f'Professorat trobat: {str(professor_list)[1:-1]}', end='<br><br>\n')
+        calendar, events_fullcalendar = genera_calendari(llista_assignatures,
+                                                     include_holidays=include_holidays,
+                                                     calendari=calendari,
+                                                     block_list=blocked_codes)
 
-    print(f'Professorat trobat: {str(professor_list)[1:-1]}', end='<br><br>\n')
 
+    if feed:
+        sys.stdout.buffer.write(calendar.to_ical())
+        write_log(f'Feed generat per "{name}" ({codi}) amb {len(llista_assignatures)} assignatures.')        
+        return
 
     imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=blocked_codes)
 
@@ -733,11 +722,6 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None):
     <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
     Incloure festius i no lectius</label><br>'''
     )
-
-    calendar, events_fullcalendar = genera_calendari(llista_assignatures,
-                                                     include_holidays=include_holidays,
-                                                     calendari=calendari,
-                                                     block_list=blocked_codes)
   
     imprimeix_html(events_fullcalendar, calendar.to_ical(), outfile=None, standalone=False)
 
