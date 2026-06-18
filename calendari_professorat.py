@@ -180,29 +180,47 @@ class UABPDSClient:
         return filters
 
     def calendari_from_assignatures(self, llista_assignatures):
-        assignatures = expand_assignatures_for_request(llista_assignatures)
-        if not assignatures:
+        if not llista_assignatures:
             return None
         self.session.get(URL_HORARIS, timeout=45)
-        json_filters = self._build_subject_filter(assignatures)
-        form_data = {
-            'jsonBusquedaAsignaturas': json.dumps(json_filters, ensure_ascii=False),
-            'limpiarParametrosBusqueda': 'N',
-            'idPestana': '0',
-            'ultimoPlanDocente': str(academic_year_start()),
-            'accesoSecretaria': 'null',
-        }
-        # Reproduce the same two-step flow the browser uses before asking for the ICS blob.
-        self.session.post(URL_PDS + 'consultaPublica/look%5Bconpub%5DActualizarPestanaPubHora?rnd=1', data=form_data, timeout=45)
-        self.session.post(URL_PDS + 'consultaPublica/look%5Bconpub%5DMostrarPubHora?rnd=1', data=form_data, timeout=45)
-        ics_response = self._post_json(URL_PDS + 'control/%5BmtoGenerarICS%5D', data={})
-        if ics_response.get('code') != 200:
-            return None
-        ics_b64 = ics_response.get('data', {}).get('result')
-        if not ics_b64:
-            return None
-        ics_bytes = base64.b64decode(ics_b64)
-        return Calendar.from_ical(ics_bytes)
+        merged_calendar = None
+
+        # Avoid backend validation errors by querying at most 10 courses per request.
+        for idx in range(0, len(llista_assignatures), 10):
+            chunk = llista_assignatures[idx:idx + 10]
+            assignatures = expand_assignatures_for_request(chunk)
+            if not assignatures:
+                continue
+
+            json_filters = self._build_subject_filter(assignatures)
+            form_data = {
+                'jsonBusquedaAsignaturas': json.dumps(json_filters, ensure_ascii=False),
+                'limpiarParametrosBusqueda': 'N',
+                'idPestana': '0',
+                'ultimoPlanDocente': str(academic_year_start()),
+                'accesoSecretaria': 'null',
+            }
+            # Reproduce the same two-step flow the browser uses before asking for the ICS blob.
+            self.session.post(URL_PDS + 'consultaPublica/look%5Bconpub%5DActualizarPestanaPubHora?rnd=1', data=form_data, timeout=45)
+            self.session.post(URL_PDS + 'consultaPublica/look%5Bconpub%5DMostrarPubHora?rnd=1', data=form_data, timeout=45)
+            ics_response = self._post_json(URL_PDS + 'control/%5BmtoGenerarICS%5D', data={})
+            if ics_response.get('code') != 200:
+                return None
+
+            ics_b64 = ics_response.get('data', {}).get('result')
+            if not ics_b64:
+                continue
+
+            chunk_calendar = Calendar.from_ical(base64.b64decode(ics_b64))
+            if merged_calendar is None:
+                merged_calendar = chunk_calendar
+                continue
+
+            for component in chunk_calendar.subcomponents:
+                if getattr(component, 'name', '') == 'VEVENT':
+                    merged_calendar.add_component(component)
+
+        return merged_calendar
 
 
 def extreu_assignatures_de_fitxa(fitxa):
