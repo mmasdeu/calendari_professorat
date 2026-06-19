@@ -336,6 +336,93 @@ def normalize_block_list(block_list):
                 normalized.append(code)
     return normalized
 
+
+def _extract_teaching_event_parts(summary):
+    data = str(summary)
+    match = re.match(r'(\d+)\s*-\s*(.*?)\s*Grup:\s*(\d+)\s*-\s*(.*)', data)
+    if not match:
+        return None
+    codi, nom_assignatura, grup, tipus = match.groups()
+    return codi, nom_assignatura, grup, tipus
+
+
+def _match_assignatura_for_event(llista_assignatures, codi, tipus, grup):
+    return next((a for a in llista_assignatures if a.codi == codi and\
+                ((a.grup == '-1') or (a.grup == t_abbrev(tipus, grup)) or (t_abbrev(tipus) == 'EX'))), None)
+
+
+def compute_group_event_counts(llista_assignatures, calendari, block_list=None):
+    block_list = normalize_block_list(block_list)
+    counts = {}
+    seen_events = set()
+
+    if calendari is None:
+        return counts
+
+    for event in calendari.events:
+        parsed = _extract_teaching_event_parts(event.get('SUMMARY'))
+        if not parsed:
+            continue
+
+        codi, _nom_assignatura, grup, tipus = parsed
+        if str(codi) in block_list:
+            continue
+
+        lloc = str(event.get('LOCATION')).replace('Aula de docència', '').replace('d`', '').strip(' - ').strip()
+        if lloc == 'None':
+            lloc = '** aula no assignada **'
+        start = event.get('DTSTART')
+        end = event.get('DTEND')
+
+        # Keep duplicate handling aligned with genera_calendari.
+        event_id = (str(event.get('SUMMARY')), lloc, start, end)
+        if event_id in seen_events:
+            continue
+        seen_events.add(event_id)
+
+        assignatura = _match_assignatura_for_event(llista_assignatures, codi, tipus, grup)
+        if assignatura is None:
+            continue
+
+        key = (assignatura.centre, assignatura.codi, assignatura.periode)
+        group_label = t_abbrev(tipus, grup)
+        if key not in counts:
+            counts[key] = {}
+        counts[key][group_label] = counts[key].get(group_label, 0) + 1
+
+    return counts
+
+
+def serialize_group_event_counts(group_event_counts):
+    payload = {}
+    for (centre, codi, periode), group_counts in group_event_counts.items():
+        payload[f'{centre}++{codi}++{periode}'] = group_counts
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def deserialize_group_event_counts(raw):
+    if not raw:
+        return {}
+    try:
+        decoded = json.loads(raw)
+    except Exception:
+        return {}
+
+    result = {}
+    for key, group_counts in decoded.items():
+        parts = str(key).split('++')
+        if len(parts) != 3 or not isinstance(group_counts, dict):
+            continue
+        centre, codi, periode = parts
+        clean_counts = {}
+        for group_name, count in group_counts.items():
+            try:
+                clean_counts[str(group_name)] = int(count)
+            except Exception:
+                continue
+        result[(centre, codi, periode)] = clean_counts
+    return result
+
 def imprimeix_html(events, ics_string, outfile=None, standalone=None):
     ics_string = ics_string.decode('utf-8').replace('\r\n', '\n').strip()
     if standalone is None:
@@ -487,17 +574,21 @@ def build_database(name, codi):
                 eprint('Error descarregant el calendari per al professor/a', professor)
                 cal = Calendar()
                 continue
+            group_event_counts = compute_group_event_counts(assignatures, cal)
             with open(fname, "wb") as f:
                 f.write(professor.encode('utf-8') + b'\n')
                 f.write(str(len(assignatures)).encode('utf-8') + b'\n')
                 for a in assignatures:
                     f.write(a.to_string().encode('utf-8') + b'\n')
+                metadata_line = 'GROUP_EVENT_COUNTS_JSON=' + serialize_group_event_counts(group_event_counts)
+                f.write(metadata_line.encode('utf-8') + b'\n')
                 f.write(cal.to_ical())
             os.chmod(fname, 0o666)
         else:
             cal = Calendar()
+            group_event_counts = {}
         eprint('Fet!')    
-        ans.append((professor, assignatures, cal))
+        ans.append((professor, assignatures, cal, group_event_counts))
     return ans
 
 
@@ -562,20 +653,18 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
             lloc = '** aula no assignada **'
         start = event.get('DTSTART')
         end = event.get('DTEND')
-        # Extract code, name, group, type using regex: 100088 - Àlgebra Lineal Grup: 2 - Pràctiques d'Aula
-        match = re.match(r'(\d+)\s*-\s*(.*?)\s*Grup:\s*(\d+)\s*-\s*(.*)', data)
-        if match:
+        parsed = _extract_teaching_event_parts(data)
+        if parsed:
             # Skip if event is duplicate (same summary, location, start, end)
             event_id = (data, lloc, start, end)
             if event_id in seen_events:
                 continue
             seen_events.add(event_id)
 
-            codi, nom_assignatura, grup, tipus = match.groups()
+            codi, nom_assignatura, grup, tipus = parsed
             title = f'{codi} {nom_assignatura} ({t_abbrev(tipus)}/{grup}) ➤ {lloc}'
             if str(codi) not in block_list:
-                a = next((a for a in llista_assignatures if a.codi == codi and\
-                            ((a.grup == '-1') or (a.grup == t_abbrev(tipus,grup)) or (t_abbrev(tipus) == 'EX'))), None)
+                a = _match_assignatura_for_event(llista_assignatures, codi, tipus, grup)
                 if a is not None:
                     event = Event()
                     event['SUMMARY'] = data
@@ -620,8 +709,9 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
                 events_fullcalendar.append((data, str(start.dt), str(end.dt), '#808080', is_allday))
     return newcal, events_fullcalendar
 
-def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=None):
+def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=None, group_event_counts=None):
     blocked_codes = set(normalize_block_list(blocked_codes))
+    group_event_counts = group_event_counts or {}
     if html:
         end = '<br>'
         sep = '<hr>'
@@ -651,8 +741,16 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, 
                 text_nom = assignatures[0].nom_curt()
             per = 'C1' if periode == 'C/1' else 'C2' if periode == 'C/2' else 'A'
             linia = f'{text_codi}\t{text_nom} · {per} '
-            grups = ', '.join(sorted(set(a.grup for a in assignatures)))
-            linia += f'({grups})'
+            counts_for_row = group_event_counts.get((centre, codi, periode), {})
+            if counts_for_row:
+                counts_text = ', '.join(
+                    f'{count} x {group_name}'
+                    for group_name, count in sorted(counts_for_row.items())
+                )
+                linia += f'({counts_text})'
+            else:
+                grups = ', '.join(sorted(set(a.grup for a in assignatures)))
+                linia += f'({grups})'
             f.write(linia.replace('\t', tab) + end)
         f.write(sep)
 
@@ -679,20 +777,29 @@ def llegeix_fitxer_calendari(name, codi):
             for _ in range(n_assignatures):
                 a = Assignatura(f.readline().decode('utf-8').strip())
                 llista_assignatures.append(a)
-            calendari = Calendar.from_ical(f.read())
+            remaining = f.read()
+            group_event_counts = {}
+            metadata_prefix = b'GROUP_EVENT_COUNTS_JSON='
+            if remaining.startswith(metadata_prefix):
+                newline = remaining.find(b'\n')
+                if newline != -1:
+                    metadata_raw = remaining[len(metadata_prefix):newline].decode('utf-8', errors='replace')
+                    group_event_counts = deserialize_group_event_counts(metadata_raw)
+                    remaining = remaining[newline + 1:]
+            calendari = Calendar.from_ical(remaining)
             eprint('Loaded data for professor:', professor)
     else:
         fullname = find_professor(name, codi)
         if fullname is None:
-            return None, [None], None
+            return None, [None], None, {}
         else:
             ans = build_database(fullname, codi)
             if len(ans) > 0:
                 return ans[0]
             else:
                 print("No s'ha trobat cap professor/a amb el nom especificat.\n")
-                return None, [None], None
-    return professor, llista_assignatures, calendari
+                return None, [None], None, {}
+    return professor, llista_assignatures, calendari, group_event_counts
 
 def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None, feed=False):
     blocked_codes = normalize_block_list(block_list)
@@ -702,15 +809,18 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None, fe
     if '++' in name:
         llista_assignatures = [Assignatura(n) for n in name.split(';')]
         calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, block_list=block_list)
+        group_event_counts = compute_group_event_counts(llista_assignatures, calendar, block_list=blocked_codes)
     elif '/' in name:
         llista_assignatures = [Assignatura(centre, codi) for centre, codi in (n.split('/', 1) for n in name.replace(' ', '').split(';'))]
         calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, block_list=block_list)
+        group_event_counts = compute_group_event_counts(llista_assignatures, calendar, block_list=blocked_codes)
     else:
         llista_assignatures = []
         calendari = Calendar()
         professor_list = []
+        group_event_counts = {}
         for n in name.split(';'):
-            professor, assignatures, calendari_nou = llegeix_fitxer_calendari(n.strip(), codi)
+            professor, assignatures, calendari_nou, group_event_counts_nou = llegeix_fitxer_calendari(n.strip(), codi)
             professor_list.append(professor)
             for a in assignatures:
                 if a not in llista_assignatures:
@@ -720,6 +830,13 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None, fe
                 # Merge events from calendari_nou into calendari
                 for event in calendari_nou.events:
                     calendari.add_component(event)
+            if not group_event_counts_nou:
+                group_event_counts_nou = compute_group_event_counts(assignatures, calendari_nou)
+            for key, row_counts in group_event_counts_nou.items():
+                if key not in group_event_counts:
+                    group_event_counts[key] = {}
+                for group_name, count in row_counts.items():
+                    group_event_counts[key][group_name] = group_event_counts[key].get(group_name, 0) + count
         if all(o is None for o in professor_list):
             return
         print(f'Professorat trobat: {str(professor_list)[1:-1]}', end='<br><br>\n')
@@ -727,6 +844,8 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None, fe
                                                      include_holidays=include_holidays,
                                                      calendari=calendari,
                                                      block_list=blocked_codes)
+        if blocked_codes:
+            group_event_counts = compute_group_event_counts(llista_assignatures, calendari, block_list=blocked_codes)
 
 
     if feed:
@@ -734,7 +853,13 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None, fe
         write_log(f'Feed generat per "{name}" ({codi}) amb {len(llista_assignatures)} assignatures.')        
         return
 
-    imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=blocked_codes)
+    imprimeix_llista_assignatures(
+        llista_assignatures,
+        html=True,
+        outfile=None,
+        blocked_codes=blocked_codes,
+        group_event_counts=group_event_counts,
+    )
 
     print('''
     <input type="checkbox" id="includeHolidays" ''' + ('checked' if include_holidays else '') + '''>
@@ -837,7 +962,7 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None, fe
     return
 
 def main(name, codi=402, out_ics=True, out_html=True, outfile='calendari', include_holidays=True, block_list=None):
-    professor, llista_assignatures, calendari = llegeix_fitxer_calendari(name, codi)
+    professor, llista_assignatures, calendari, _group_event_counts = llegeix_fitxer_calendari(name, codi)
     if professor is None:
         return
     calendar, events_fullcalendar = genera_calendari(llista_assignatures, include_holidays=include_holidays, calendari=calendari, block_list=block_list)
