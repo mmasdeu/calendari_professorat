@@ -431,8 +431,10 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
         if standalone:
             f.write(f'<html><head>\
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.css">\
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fullcalendar/multimonth@6.1.20/index.global.min.css">\
             <link rel="stylesheet" href="{BASE_URL}/~masdeu/teaching/misc/calendari_style.css">\
             <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js"></script>\
+            <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/multimonth@6.1.20/index.global.min.js"></script>\
             <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/locales-all.min.js"></script>\
             <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>\
             </head><body>\n')
@@ -470,12 +472,13 @@ def imprimeix_html(events, ics_string, outfile=None, standalone=None):
                     headerToolbar: {
                         left: 'prev,next,today',
                         center: 'title',
-                        right: 'timeGridWeek,listMonth'
+                        right: 'timeGridWeek,listMonth,multiMonthYear'
                     },
                                         buttonText: {
                                                 today: 'avui',
                                                 week: 'setmana',
-                                                list: 'llista'
+                                                list: 'llista',
+                                                multiMonthYear: 'any'
                                         },
                       titleFormat: { // will produce something like "Tuesday, September 18, 2018"
                         month: 'numeric',
