@@ -23,10 +23,6 @@ URL_HORARIS = URL_PDS + "consultaPublica/look%5Bconpub%5DInicioPubHora?entradaPu
 HOME = os.getenv('HOME')
 USER = 'masdeu'
 
-# Set the academic year for constructing URLs to subject pages (for linking in the HTML output)
-# Get it from datetime.now() and assume that if we're in the first half of the year, the academic year is the previous year / current year, otherwise it's current year / next year
-CURS = datetime.now().year - 1 if datetime.now().month < 8 else datetime.now().year
-
 BASE_URL = f"https://mat.uab.cat"
 if 'home' not in HOME:
     HOME = f'/home/{USER}'  # default fallback for use with things like /var/www
@@ -77,6 +73,9 @@ def write_log(message):
 
 
 def academic_year_start(now=None):
+    r'''
+    Returns the starting year of the current academic year.
+    If the current month is before August, it returns the previous year; otherwise, it returns the current year.'''
     now = now or datetime.now()
     return now.year - 1 if now.month < 8 else now.year
 
@@ -229,7 +228,7 @@ def extreu_assignatures_de_fitxa(fitxa):
     for bloc in fitxa.get('gruposDocencia', []):
         centre = str(bloc.get('codCentro', '-1'))
         for assignatura in bloc.get('list', []):
-            print(assignatura)
+            # print(assignatura)
             codi = str(assignatura.get('codAsig', ''))
             nom = str(assignatura.get('desc', ''))
             for grup in assignatura.get('grupos', []):
@@ -310,6 +309,7 @@ class Assignatura():
         return iter((self.centre, self.codi, self.grup, self.periode, self.nom))
     
 def t_abbrev(tipus_full, grup=None):
+    tipus_base = str(tipus_full).split(' - ', 1)[0].strip()
     tipus_abbrev = {
         'Teoria': 'TE',
         'Pràctiques d\'Aula': 'PAUL',
@@ -320,7 +320,7 @@ def t_abbrev(tipus_full, grup=None):
         'Pràctiques Externes': 'PEXT',
         'Treball de Final de Grau': 'TFG'
     }
-    tipus = tipus_abbrev.get(tipus_full, tipus_full)
+    tipus = tipus_abbrev.get(tipus_base, tipus_base)
     return tipus if grup is None else f'{tipus}/{grup}'
 
 def normalize_block_list(block_list):
@@ -521,10 +521,11 @@ def find_professor(name, codi):
     codi = int(codi)
     client = UABPDSClient()
     professors = client.professors_departament(codi)
-    tokens = [n.strip().lower() for n in str(name).split(' ') if n.strip()]
+    tokens = [remove_accents(n.strip().lower()) for n in str(name).split(' ') if n.strip()]
     for idx, prof in enumerate(professors):
         professor = str(prof.get('nombreCompleto', ''))
-        if all(token in professor.lower() for token in tokens):
+        prof_norm = remove_accents(professor.lower())
+        if all(token in prof_norm for token in tokens):
             eprint(f'Professor/a "{professor}" trobat al número {idx}.')
             return professor
     return None
@@ -570,7 +571,9 @@ def build_database(name, codi):
         eprint('Processant professor', professor, 'amb', len(assignatures), 'assignatures...', end=' ')
         sys.stderr.flush()
         if len(assignatures) > 0:
-            prof_str = professor.replace(' ', '_').replace('/', '_').replace(',', '_').replace('ñ', 'n').replace('Ñ', 'N')
+            prof_str = remove_accents(professor)
+            prof_str = prof_str.replace(' ', '_').replace('/', '_').replace(',', '_')
+            prof_str = prof_str.replace('ñ', 'n').replace('Ñ', 'N')
             fname = f'{CACHED_CALENDARS_DIR}/prof_{codi}_{prof_str}.data'
             cal = descarrega_calendari(assignatures)
             if cal is None:
@@ -578,6 +581,10 @@ def build_database(name, codi):
                 cal = Calendar()
                 continue
             group_event_counts = compute_group_event_counts(assignatures, cal)
+            try:
+                os.remove(fname)
+            except Exception as e:
+                eprint(f'Error eliminant el fitxer {fname}: {e}')
             with open(fname, "wb") as f:
                 f.write(professor.encode('utf-8') + b'\n')
                 f.write(str(len(assignatures)).encode('utf-8') + b'\n')
@@ -586,7 +593,10 @@ def build_database(name, codi):
                 metadata_line = 'GROUP_EVENT_COUNTS_JSON=' + serialize_group_event_counts(group_event_counts)
                 f.write(metadata_line.encode('utf-8') + b'\n')
                 f.write(cal.to_ical())
-            os.chmod(fname, 0o666)
+            try:
+                os.chmod(fname, 0o666)
+            except Exception as e:
+                eprint(f'Error al canviar els permisos del fitxer {fname}: {e}')
         else:
             cal = Calendar()
             group_event_counts = {}
@@ -614,10 +624,11 @@ def get_assignatures(name, codi, exact=False):
     client = UABPDSClient()
     professors = client.professors_departament(codi)
     if exact:
-        selected = next((p for p in professors if str(p.get('nombreCompleto', '')).strip().lower() == str(name).strip().lower()), None)
+        target = remove_accents(str(name).strip().lower())
+        selected = next((p for p in professors if remove_accents(str(p.get('nombreCompleto', '')).strip().lower()) == target), None)
     else:
-        tokens = [n.strip().lower() for n in str(name).split(' ') if n.strip()]
-        selected = next((p for p in professors if all(t in str(p.get('nombreCompleto', '')).lower() for t in tokens)), None)
+        tokens = [remove_accents(n.strip().lower()) for n in str(name).split(' ') if n.strip()]
+        selected = next((p for p in professors if all(t in remove_accents(str(p.get('nombreCompleto', '')).lower()) for t in tokens)), None)
     if selected is None:
         eprint(f"No s'ha trobat cap professor/a amb el nom '{name}'.")
         return None, []
@@ -715,6 +726,7 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
 def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, blocked_codes=None, group_event_counts=None):
     blocked_codes = set(normalize_block_list(blocked_codes))
     group_event_counts = group_event_counts or {}
+    curs = academic_year_start()
     if html:
         end = '<br>'
         sep = '<hr>'
@@ -734,7 +746,7 @@ def imprimeix_llista_assignatures(llista_assignatures, html=True, outfile=None, 
             f.write(sep)
         for (centre, codi, periode), assignatures in dict_assignatures.items():
             if html:
-                url_assignatura = URL_GUIES_DOCENTS + f"{CURS}/assignatura/{codi}/ca"
+                url_assignatura = URL_GUIES_DOCENTS + f"{curs}/assignatura/{codi}/ca"
                 text_codi = f'<a href="{url_assignatura}"><b>{centre}</b> ({codi_centres.get(int(centre), "?")}) / <b>{codi}</b></a>'
                 blocked_class = ' is-blocked' if str(codi) in blocked_codes else ''
                 course_name = assignatures[0].nom_curt().strip()
@@ -771,7 +783,7 @@ def llegeix_fitxer_calendari(name, codi):
         os_files = [f for f in os.listdir(CACHED_CALENDARS_DIR) if f.startswith(f'prof_{codi}_') and f.endswith('.data')]
     except FileNotFoundError:
         os_files = []
-    fname = next((f for f in os_files if all(n in f.lower() for n in name_words)), None)
+    fname = next((f for f in os_files if all(n in remove_accents(f.lower()) for n in name_words)), None)
     if fname is not None:
         with open(os.path.join(CACHED_CALENDARS_DIR, fname), 'rb') as f:
             professor = f.readline().decode('utf-8').strip()
