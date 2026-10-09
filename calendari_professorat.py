@@ -24,6 +24,8 @@ HOME = os.getenv('HOME')
 USER = 'masdeu'
 
 BASE_URL = f"https://mat.uab.cat"
+ICS_VERSION = '2.0'
+ICS_PRODID = '-//UAB//Calendari Professorat//CA'
 if 'home' not in HOME:
     HOME = f'/home/{USER}'  # default fallback for use with things like /var/www
 
@@ -652,6 +654,8 @@ def genera_calendari(llista_assignatures, include_holidays=True, calendari=None,
     # Process events and keep only those corresponding to our subjects
     block_list = normalize_block_list(block_list)
     newcal = Calendar()
+    newcal.add('version', ICS_VERSION)
+    newcal.add('prodid', ICS_PRODID)
     events_fullcalendar = []
     if calendari is None:
         calendari = descarrega_calendari(llista_assignatures)
@@ -832,6 +836,8 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None, fe
     else:
         llista_assignatures = []
         calendari = Calendar()
+        calendari.add('version', ICS_VERSION)
+        calendari.add('prodid', ICS_PRODID)
         professor_list = []
         group_event_counts = {}
         for n in name.split(';'):
