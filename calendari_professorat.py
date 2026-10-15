@@ -860,7 +860,8 @@ def fes_web_calendari(name, codi=402, include_holidays=True, block_list=None, fe
                     group_event_counts[key][group_name] = group_event_counts[key].get(group_name, 0) + count
         if all(o is None for o in professor_list):
             return
-        print(f'Professorat trobat: {str(professor_list)[1:-1]}', end='<br><br>\n')
+        if not feed:
+            print(f'Professorat trobat: {str(professor_list)[1:-1]}', end='<br><br>\n')
         calendar, events_fullcalendar = genera_calendari(llista_assignatures,
                                                      include_holidays=include_holidays,
                                                      calendari=calendari,
